@@ -1,0 +1,4 @@
+@author Alexander Dergachev
+@copyright 2012-2013 Alexander Dergachev
+@version HEAD
+@title A simple Json schema validator for Erlang
