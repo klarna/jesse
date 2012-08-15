@@ -11,7 +11,8 @@
 -type kvc_obj() :: kvc_obj_node() | [kvc_obj_node()] | list().
 -type kvc_key() :: binary() | atom() | string().
 -type proplist() :: [{kvc_key(), kvc_obj()}].
--type kvc_obj_node() :: proplist() | {struct, proplist()} | dict() | gb_tree() | term().
+-type kvc_obj_node() :: proplist() | {struct, proplist()}
+                      | dict() | gb_tree() | term().
 -type typed_proplist() :: {proplist() | {gb_tree, gb_tree()}, elem_type()}.
 
 -export_type([proplist/0, kvc_key/0, kvc_obj/0]).
