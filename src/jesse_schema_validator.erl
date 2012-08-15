@@ -207,7 +207,7 @@ check_properties([{Key, _Value} = Property | Rest], Schema) ->
   PropertiesSchema = get_path(?PROPERTIES, Schema),
   case check_property(Property, get_path(Key, PropertiesSchema)) of
     ok ->
-      check_properties(Rest, PropertiesSchema);
+      check_properties(Rest, Schema);
     extra_property ->
       check_additional_property(Property, Schema),
       check_properties(Rest, Schema)
