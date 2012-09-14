@@ -299,6 +299,8 @@ check_max(Property, Max, Excl) ->
         }).
 
 %% @private
+check_divisible_by(_Property, [], _ParentSchema) ->
+  ok;
 check_divisible_by(_Property, 0, ParentSchema) ->
   throw({ schema_invalid
         , ParentSchema
