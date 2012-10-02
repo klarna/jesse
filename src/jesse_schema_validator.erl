@@ -170,7 +170,7 @@ validate_object({_Key, Value} = Property, Schema) ->
   case is_json_object(Value) of
     true ->
       check_enum(Property, get_path(?ENUM, Schema)),
-      Properties       = to_proplist(Value),
+      Properties       = unwrap(Value),
       PropertiesSchema = get_path(?PROPERTIES, Schema),
       check_required(Properties, PropertiesSchema),
       check_properties(Properties, Schema);
@@ -475,6 +475,10 @@ get_path(Key, Schema) ->
 %% @private
 to_proplist(Value) ->
   jesse_json_path:to_proplist(Value).
+
+%% @private
+unwrap(Value) ->
+  jesse_json_path:unwrap_value(Value).
 
 %%% Local Variables:
 %%% erlang-indent-level: 2

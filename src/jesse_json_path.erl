@@ -4,7 +4,7 @@
 %% @doc Implementation of Key Value Coding style "queries" for commonly
 %% used Erlang data structures.
 -module(jesse_json_path).
--export([path/2, value/3, to_proplist/1]).
+-export([path/2, value/3, to_proplist/1, unwrap_value/1]).
 
 -type elem_key_type() :: atom | binary | string | undefined.
 -type elem_type() :: list | elem_key_type().
@@ -88,6 +88,14 @@ to_proplist(T) ->
       [fun to_proplist_gb/1,
        fun to_proplist_dict/1,
        fun identity/1], T).
+
+%% @doc Unwrap data (remove mochijson2 & EEP18 related constructions)
+-spec unwrap_value(kvc_obj()) -> kvc_obj().
+unwrap_value({struct, L}) -> L;
+unwrap_value({L})         -> L;
+unwrap_value({})          -> [];
+unwrap_value([])          -> [];
+unwrap_value(L)           -> L.
 
 %% Internal API
 
