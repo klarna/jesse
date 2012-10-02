@@ -322,7 +322,7 @@ check_divisible_by({_Key, Value} = Property, Divider, _ParentSchema) ->
 check_min_length(_Property, []) ->
   ok;
 check_min_length({_Key, Value} = Property, Min) ->
-  case length(unicode:characters_to_list(Value)) < Min of
+  case length(unicode:characters_to_list(Value)) >= Min of
     true ->
       ok;
     false ->
@@ -337,7 +337,7 @@ check_min_length({_Key, Value} = Property, Min) ->
 check_max_length(_Property, []) ->
   ok;
 check_max_length({_Key, Value} = Property, Max) ->
-  case length(unicode:characters_to_list(Value)) > Max of
+  case length(unicode:characters_to_list(Value)) =< Max of
     true ->
       ok;
     false ->
