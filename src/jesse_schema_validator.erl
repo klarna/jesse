@@ -412,6 +412,8 @@ check_unique_items({_Key, []}, _UniqueItems) ->
   ok;
 check_unique_items({_Key, [_Item]}, _UniqueItems) ->
   ok;
+check_unique_items({_Key, [_Item1, _Item2]}, _UniqueItems) ->
+  ok;
 check_unique_items({Key, [Item, Item | _Rest]}, UniqueItems) ->
   throw({ data_invalid
         , {Key, Item}
