@@ -377,8 +377,12 @@ check_items(_Property, [], _ParentSchema) ->
   ok;
 check_items(Property, Schema, ParentSchema) when is_list(Schema) ->
   check_array_schema(Property, Schema, ParentSchema);
-check_items(Property, Schema, _ParentSchema) ->
-  check_property(Property, Schema).
+check_items({Key, Values} = _Property, Schema, _ParentSchema) ->
+  lists:foreach( fun(Value) ->
+                     check_property({Key, Value}, Schema)
+                 end
+               , Values
+               ).
 
 %% @private
 check_array_schema({_Key, []}, _Schema, _ParentSchema) ->
