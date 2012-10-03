@@ -76,7 +76,7 @@ store_schema(Schemas, ValidationFun, MakeKeyFun) ->
                  case ValidationFun(Value) of
                    true ->
                      NewObject = { MakeKeyFun(Value)
-                                 , get_secondary_key(InFile)
+                                 , InFile
                                  , TimeStamp
                                  , Value
                                  },
@@ -123,17 +123,11 @@ get_updated_files(InDir) ->
     {Files, _TableExists} ->
       Filter = fun(InFile) ->
                    is_outdated( get_full_path(InDir, InFile)
-                              , get_secondary_key(InFile)
+                              , InFile
                               )
                end,
       lists:filter(Filter, Files)
   end.
-
-%% @doc Returns a secondary key for the cache storage, based on a schema
-%% definition file name. This key will be used during cache updates.
-%% @private
-get_secondary_key(InFile) ->
-  filename:rootname(InFile).
 
 %% @doc Loads schema definitions from a list of files `Files' located in
 %% directory `InDir', and parses each of entry by the given parse
