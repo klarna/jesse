@@ -89,7 +89,7 @@ to_proplist(T) ->
        fun to_proplist_dict/1,
        fun identity/1], T).
 
-%% @doc Unwrap data (remove mochijson2 & EEP18 related constructions)
+%% @doc Unwrap data (remove mochijson2 and EEP18 related constructions)
 -spec unwrap_value(kvc_obj()) -> kvc_obj().
 unwrap_value({struct, L}) -> L;
 unwrap_value({L})         -> L;
