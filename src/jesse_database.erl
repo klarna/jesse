@@ -168,7 +168,7 @@ get_full_path(Dir, File) ->
 %% the entry does not exist in the cache, otherwise `false' is returned.
 %% @private
 is_outdated(InFile, SecondaryKey) ->
-  case ets:lookup(table_name(), {'_', SecondaryKey, '_', '_'}) of
+  case ets:match_object(table_name(), {'_', SecondaryKey, '_', '_'}) of
     [] ->
       true;
     [{_Key, SecondaryKey, TimeStamp, _Value}] ->
