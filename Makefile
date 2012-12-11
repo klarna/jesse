@@ -29,6 +29,8 @@ clean-docs:
 	rm -f doc/*.png
 	rm -f doc/edoc-info
 
+conf_clean:
+	@:
 # Tests.
 
 # deps/proper:
