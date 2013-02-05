@@ -33,17 +33,17 @@ conf_clean:
 	@:
 # Tests.
 
-# deps/proper:
-# 	@$(REBAR) -C rebar.tests.config get-deps
-# 	cd deps/proper && $(REBAR) compile
+deps/jiffy:
+	@$(REBAR) -C rebar.tests.config get-deps
+	cd deps/jiffy && $(REBAR) compile
 
-# tests: clean deps/proper app eunit ct
+test: clean deps/jiffy app eunit ct
 
-# eunit:
-# 	@$(REBAR) -C rebar.tests.config eunit skip_deps=true
+eunit:
+	@$(REBAR) -C rebar.tests.config eunit skip_deps=true
 
-# ct:
-# 	@$(REBAR) -C rebar.tests.config ct skip_deps=true suites=http,proper,ws
+ct:
+	@$(REBAR) -C rebar.tests.config ct skip_deps=true suites=jesse_tests_draft3
 
 # Dialyzer.
 
