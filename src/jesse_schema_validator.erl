@@ -259,7 +259,52 @@ check_value(_Value, [], _JsonSchema) ->
 check_value(Value, [_Attr | Attrs], JsonSchema) ->
   check_value(Value, Attrs, JsonSchema).
 
-%% @doc to be written
+%% @doc 5.1.  type
+%%
+%% This attribute defines what the primitive type or the schema of the
+%% instance MUST be in order to validate.  This attribute can take one
+%% of two forms:
+%%
+%% Simple Types  A string indicating a primitive or simple type. The
+%%    following are acceptable string values:
+%%
+%%    string  Value MUST be a string.
+%%
+%%    number  Value MUST be a number, floating point numbers are
+%%       allowed.
+%%
+%%    integer  Value MUST be an integer, no floating point numbers are
+%%       allowed.  This is a subset of the number type.
+%%
+%%    boolean  Value MUST be a boolean.
+%%
+%%    object  Value MUST be an object.
+%%
+%%    array  Value MUST be an array.
+%%
+%%    null  Value MUST be null.  Note this is mainly for purpose of
+%%       being able use union types to define nullability.  If this type
+%%       is not included in a union, null values are not allowed (the
+%%       primitives listed above do not allow nulls on their own).
+%%
+%%    any  Value MAY be of any type including null.
+%%
+%%    If the property is not defined or is not in this list,
+%%    then any type of value is acceptable.  Other type values MAY be used for
+%%    custom purposes, but minimal validators of the specification
+%%    implementation can allow any instance value on unknown type
+%%    values.
+%%
+%%  Union Types  An array of two or more simple type definitions.  Each
+%%     item in the array MUST be a simple type definition or a schema.
+%%     The instance value is valid if it is of the same type as one of
+%%     the simple type definitions, or valid by one of the schemas, in
+%%     the array.
+%%
+%%  For example, a schema that defines if an instance can be a string or
+%%  a number would be:
+%%
+%%  {"type":["string","number"]}
 %% @private
 check_type(Value, ?STRING, JsonSchema) ->
   case is_binary(Value) of
@@ -327,12 +372,28 @@ check_type(Value, UnionType, JsonSchema) when is_list(UnionType) ->
 check_type(_Value, _Type, _JsonSchema) ->
   ok.
 
-%% @doc to be written
+%% @doc 5.2.  properties
+%%
+%% This attribute is an object with property definitions that define the
+%% valid values of instance object property values.  When the instance
+%% value is an object, the property values of the instance object MUST
+%% conform to the property definitions in this object.  In this object,
+%% each property definition's value MUST be a schema, and the property's
+%% name MUST be the name of the instance property that it defines.  The
+%% instance property value MUST be valid according to the schema from
+%% the property definition.  Properties are considered unordered, the
+%% order of the instance properties MAY be in any order.
 %% @private
 check_properties(Value, Properties) ->
   lists:foreach( fun({PropertyName, PropertySchema}) ->
                      case get_path(PropertyName, Value) of
                        [] ->
+%% @doc 5.7.  required
+%%
+%% This attribute indicates if the instance must have a value, and not
+%% be undefined.  This is false by default, making the instance
+%% optional.
+%% @end
                          case get_path(?REQUIRED, PropertySchema) of
                            true  -> throw({ data_invalid
                                           , Value
@@ -350,7 +411,15 @@ check_properties(Value, Properties) ->
                , Properties
                ).
 
-%% @doc
+%% @doc 5.3.  patternProperties
+%%
+%% This attribute is an object that defines the schema for a set of
+%% property names of an object instance.  The name of each property of
+%% this attribute's object is a regular expression pattern in the ECMA
+%% 262/Perl 5 format, while the value is a schema.  If the pattern
+%% matches the name of a property on the instance object, the value of
+%% the instance's property MUST be valid against the pattern name's
+%% schema value.'
 %% @private
 check_pattern_properties(Value, PatternProperties) ->
   [ check_match({PropertyName, PropertyValue}, {Pattern, Schema})
@@ -358,13 +427,21 @@ check_pattern_properties(Value, PatternProperties) ->
       {PropertyName, PropertyValue} <- unwrap(Value)],
   ok.
 
+%% @private
 check_match({PropertyName, PropertyValue}, {Pattern, Schema}) ->
   case re:run(PropertyName, Pattern, [{capture, none}]) of
     match   -> check_value(PropertyValue, unwrap(Schema), Schema);
     nomatch -> ok
   end.
 
-%% @doc to be written
+%% @doc 5.4.  additionalProperties
+%%
+%% This attribute defines a schema for all properties that are not
+%% explicitly defined in an object type definition.  If specified,
+%% the value MUST be a schema or a boolean.  If false is provided,
+%% no additional properties are allowed beyond the properties defined in
+%% the schema.  The default value is an empty schema which allows any
+%% value for additional properties.
 %% @private
 check_additional_properties(Value, false, JsonSchema) ->
   Properties        = get_path(?PROPERTIES, JsonSchema),
@@ -394,6 +471,7 @@ check_additional_properties(Value, AdditionalProperties, JsonSchema) ->
                            )
   end.
 
+%% @private
 get_additional_properties(Value, Properties, PatternProperties) ->
   ValuePropertiesNames  = [Name || {Name, _} <- unwrap(Value)],
   SchemaPropertiesNames = [Name || {Name, _} <- unwrap(Properties)],
@@ -407,6 +485,7 @@ get_additional_properties(Value, Properties, PatternProperties) ->
                            ),
   lists:map(fun(Name) -> get_path(Name, Value) end, ExtraNames).
 
+%% @private
 filter_extra_names(Pattern, ExtraNames) ->
   Filter = fun(ExtraName) ->
                case re:run(ExtraName, Pattern, [{capture, none}]) of
@@ -416,13 +495,36 @@ filter_extra_names(Pattern, ExtraNames) ->
            end,
   lists:filter(Filter, ExtraNames).
 
-%% @doc
+%% @doc 5.5.  items
+%%
+%% This attribute defines the allowed items in an instance array,
+%% and MUST be a schema or an array of schemas.  The default value is an
+%% empty schema which allows any value for items in the instance array.
+%%
+%% When this attribute value is a schema and the instance value is an
+%% array, then all the items in the array MUST be valid according to the
+%% schema.
+%%
+%% When this attribute value is an array of schemas and the instance
+%% value is an array, each position in the instance array MUST conform
+%% to the schema in the corresponding position for this array.  This
+%% called tuple typing.  When tuple typing is used, additional items are
+%% allowed, disallowed, or constrained by the "additionalItems"
+%% (Section 5.6) attribute using the same rules as 
+%% "additionalProperties" (Section 5.4) for objects.
 %% @private
 check_items(Value, Items, JsonSchema) when is_list(Items) ->
   Tuples = case length(Value) - length(Items) of
              0 ->
                lists:zip(Value, Items);
              NExtra when NExtra > 0 ->
+%% @doc 5.6.  additionalItems
+%%
+%% This provides a definition for additional items in an array instance
+%% when tuple definitions of the items is provided.  This can be false
+%% to indicate additional items in the array are not allowed, or it can
+%% be a schema that defines the schema of the additional items.
+%% @end
                case get_path(?ADDITIONALITEMS, JsonSchema) of
                  [] ->
                    [];
@@ -457,7 +559,24 @@ check_items(Value, Items, _JsonSchema) ->
                , Value
                ).
 
-%% @doc
+%% 5.8.  dependencies
+%%
+%% This attribute is an object that defines the requirements of a
+%% property on an instance object.  If an object instance has a property
+%% with the same name as a property in this attribute's object, then the
+%% instance must be valid against the attribute's property value
+%% (hereafter referred to as the "dependency value").
+%%
+%% The dependency value can take one of two forms:
+%%
+%% Simple Dependency  If the dependency value is a string,
+%%    then the instance object MUST have a property with the same name as the
+%%    dependency value.  If the dependency value is an array of strings,
+%%    then the instance object MUST have a property with the same name
+%%    as each string in the dependency value's array.
+%%
+%% Schema Dependency  If the dependency value is a schema, then the
+%%    instance object MUST be valid against the schema.
 %% @private
 check_dependencies(Value, Dependencies) ->
   lists:foreach( fun({DependencyName, DependencyValue}) ->
@@ -494,9 +613,19 @@ check_dependency_value(Value, Dependency) ->
                    })
   end.
 
-%% @doc
+%% @doc 5.9.  minimum
+%%
+%% This attribute defines the minimum value of the instance property
+%% when the type of the instance value is a number.
 %% @private
 check_minimum(Value, Minimum, ExclusiveMinimum) ->
+%% @doc 5.11.  exclusiveMinimum
+%%
+%% This attribute indicates if the value of the instance (if the
+%% instance is a number) can not equal the number defined by the
+%% "minimum" attribute.  This is false by default, meaning the instance
+%% value can be greater then or equal to the minimum value.
+%% @end
   Result = case ExclusiveMinimum of
              true  -> Value > Minimum;
              _     -> Value >= Minimum
@@ -510,9 +639,19 @@ check_minimum(Value, Minimum, ExclusiveMinimum) ->
                    })
   end.
 
-%%% @doc
+%%% @doc 5.10.  maximum
+%%
+%% This attribute defines the maximum value of the instance property
+%% when the type of the instance value is a number.
 %% @private
 check_maximum(Value, Maximum, ExclusiveMaximum) ->
+%% @doc 5.12.  exclusiveMaximum
+%%
+%% This attribute indicates if the value of the instance (if the
+%% instance is a number) can not equal the number defined by the
+%% "maximum" attribute.  This is false by default, meaning the instance
+%% value can be less then or equal to the maximum value.
+%% @end
   Result = case ExclusiveMaximum of
              true  -> Value < Maximum;
              _     -> Value =< Maximum
@@ -526,7 +665,10 @@ check_maximum(Value, Maximum, ExclusiveMaximum) ->
                    })
   end.
 
-%% @doc
+%% @doc 5.13.  minItems
+%%
+%% This attribute defines the minimum number of values in an array when
+%% the array is the instance value.
 %% @private
 check_min_items(Value, MinItems) when length(Value) >= MinItems ->
   ok;
@@ -537,7 +679,10 @@ check_min_items(Value, MinItems) ->
         , {min_items, MinItems}
         }).
 
-%% @doc
+%% @doc 5.14.  maxItems
+%%
+%% This attribute defines the maximum number of values in an array when
+%% the array is the instance value.
 %% @private
 check_max_items(Value, MaxItems) when length(Value) =< MaxItems ->
   ok;
@@ -548,7 +693,25 @@ check_max_items(Value, MaxItems) ->
         , {max_items, MaxItems}
         }).
 
-%% @doc
+%% @doc 5.15.  uniqueItems
+%%
+%% This attribute indicates that all items in an array instance MUST be
+%% unique (contains no two identical values).
+%%
+%% Two instance are consider equal if they are both of the same type
+%% and:
+%%
+%%    are null; or
+%%
+%%    are booleans/numbers/strings and have the same value; or
+%%
+%%    are arrays, contains the same number of items, and each item in
+%%    the array is equal to the corresponding item in the other array;
+%%    or
+%%
+%%    are objects, contains the same property names, and each property
+%%    in the object is equal to the corresponding property in the other
+%%    object.
 %% @private
 check_unique_items(Value, true = Uniqueitems) ->
   lists:foldl( fun(_Item, []) ->
@@ -575,7 +738,11 @@ check_unique_items(Value, true = Uniqueitems) ->
              ),
   ok.
 
-%% @doc
+%% @doc 5.16.  pattern
+%% When the instance value is a string, this provides a regular
+%% expression that a string instance MUST match in order to be valid.
+%% Regular expressions SHOULD follow the regular expression
+%% specification from ECMA 262/Perl 5
 %% @private
 check_pattern(Value, Pattern) ->
   case re:run(Value, Pattern, [{capture, none}]) of
@@ -587,7 +754,10 @@ check_pattern(Value, Pattern) ->
                      })
   end.
 
-%% @doc
+%% @doc 5.17.  minLength
+%%
+%% When the instance value is a string, this defines the minimum length
+%% of the string.
 %% @private
 check_min_length(Value, MinLength) ->
   case length(unicode:characters_to_list(Value)) >= MinLength of
@@ -599,7 +769,10 @@ check_min_length(Value, MinLength) ->
                    })
   end.
 
-%% @doc
+%% @doc 5.18.  maxLength
+%%
+%% When the instance value is a string, this defines the maximum length
+%% of the string.
 %% @private
 check_max_length(Value, MaxLength) ->
   case length(unicode:characters_to_list(Value)) =< MaxLength of
@@ -611,7 +784,15 @@ check_max_length(Value, MaxLength) ->
                    })
   end.
 
-%% @doc
+%% @doc 5.19.  enum
+%%
+%% This provides an enumeration of all possible values that are valid
+%% for the instance property.  This MUST be an array, and each item in
+%% the array represents a possible value for the instance value.  If
+%% this attribute is defined, the instance value MUST be one of the
+%% values in the array in order for the schema to be valid.  Comparison
+%% of enum values uses the same algorithm as defined in "uniqueItems"
+%% (Section 5.15).
 %% @private
 check_enum(Value, Enum) ->
   IsValid = lists:any( fun(ExpectedValue) ->
@@ -627,7 +808,11 @@ check_enum(Value, Enum) ->
 %% TODO:
 check_format(_Value, _Format) -> ok.
 
-%% @doc
+%% @doc 5.24.  divisibleBy
+%%
+%% This attribute defines what value the number instance must be
+%% divisible by with no remainder (the result of the division must be an
+%% integer.)  The value of this attribute SHOULD NOT be 0.
 %% @private
 check_divisible_by(_Value, 0, JsonSchema) ->
   throw({ schema_invalid
@@ -645,7 +830,12 @@ check_divisible_by(Value, DivisibleBy, _JsonSchema) ->
                  })
   end.
 
-%% @doc
+%% @doc 5.25.  disallow
+%%
+%% This attribute takes the same values as the "type" attribute, however
+%% if the instance matches the type or if this value is an array and the
+%% instance matches any type or schema in the array, then this instance
+%% is not valid.
 %% @private
 check_disallow(Value, Disallow, JsonSchema) ->
   try check_type(Value, Disallow, []) of
@@ -654,7 +844,16 @@ check_disallow(Value, Disallow, JsonSchema) ->
     throw:{data_invalid, _, _, _} -> ok
   end.
 
-%% @doc
+%% @doc 5.26.  extends
+%%
+%% The value of this property MUST be another schema which will provide
+%% a base schema which the current schema will inherit from.  The
+%% inheritance rules are such that any instance that is valid according
+%% to the current schema MUST be valid according to the referenced
+%% schema.  This MAY also be an array, in which case, the instance MUST
+%% be valid for all the schemas in the array.  A schema that extends
+%% another schema MAY define additional attributes, constrain existing
+%% attributes, or add other constraints.
 %% @private
 check_extends(Value, Extends) when is_list(Extends) ->
   lists:foreach( fun(SchemaKey) ->
@@ -672,8 +871,24 @@ check_extends(Value, Extends) ->
   end.
 
 %%=============================================================================
-%% @doc
-%% private
+%% @doc Returns `true' if given values (instance) are equal, otherwise `false'
+%% is returned.
+%%
+%% Two instance are consider equal if they are both of the same type
+%% and:
+%%
+%%    are null; or
+%%
+%%    are booleans/numbers/strings and have the same value; or
+%%
+%%    are arrays, contains the same number of items, and each item in
+%%    the array is equal to the corresponding item in the other array;
+%%    or
+%%
+%%    are objects, contains the same property names, and each property
+%%    in the object is equal to the corresponding property in the other
+%%    object.
+%% @private
 is_equal(Value1, Value2) ->
   case is_json_object(Value1) andalso is_json_object(Value2) of
     true  -> compare_objects(Value1, Value2);
@@ -683,12 +898,14 @@ is_equal(Value1, Value2) ->
              end
   end.
 
+%% @private
 compare_lists(Value1, Value2) ->
   case length(Value1) =:= length(Value2) of
     true  -> compare_elements(Value1, Value2);
     false -> false
   end.
 
+%% @private
 compare_elements(Value1, Value2) ->
   lists:all( fun({Element1, Element2}) ->
                  is_equal(Element1, Element2)
@@ -696,12 +913,14 @@ compare_elements(Value1, Value2) ->
            , lists:zip(Value1, Value2)
            ).
 
+%% @private
 compare_objects(Value1, Value2) ->
   case length(unwrap(Value1)) =:= length(unwrap(Value2)) of
     true  -> compare_properties(Value1, Value2);
     false -> false
   end.
 
+%% @private
 compare_properties(Value1, Value2) ->
   lists:all( fun({PropertyName1, PropertyValue1}) ->
                  case get_path(PropertyName1, Value2) of
