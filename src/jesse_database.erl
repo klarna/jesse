@@ -20,7 +20,7 @@
 %% validation. This module provides an interface for: 1) updating of schema
 %% definitions in runtime; 2) getting of a schema definition by a key. When
 %% an update is ordered, the update function checks a schema definition file
-%% timestamp and compares it to a timestamp for the same schema in the 'cache',
+%% timestamp and compares it to a timestamp for the same schema in the `cache',
 %% so, it will never update a schema in the database if the definition file
 %% was not updated.
 %% @end
