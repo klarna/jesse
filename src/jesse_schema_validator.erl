@@ -114,6 +114,8 @@ is_json_object({Value}) when is_list(Value)         -> true;
 is_json_object(_)                                   -> false.
 
 %%% Internal functions
+%% @doc Goes through attributes of the given schema `JsonSchema' and
+%% validates the value `Value' against them.
 %% @private
 check_value(Value, [{?TYPE, Type} | Attrs], JsonSchema) ->
   check_type(Value, Type, JsonSchema),
