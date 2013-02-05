@@ -25,7 +25,9 @@
 -module(jesse).
 
 %% API
--export([ update_schema/2
+-export([ add_schema/2
+        , del_schema/1
+        , update_schema/2
         , update_schema/4
         , validate/2
         ]).
@@ -36,6 +38,21 @@
 -type json_term() :: term().
 
 %%% API
+%% @doc Adds a schema definition `Schema' to in-memory storage associated with
+%% a key `Key'. It will overwrite an existing schema with the same key if
+%% there is any.
+-spec add_schema(Key :: any(), Schema :: json_term()) -> ok.
+add_schema(Key, Schema) ->
+  ValidationFun = fun jesse_schema_validator:is_json_object/1,
+  MakeKeyFun    = fun(_) -> Key end,
+  jesse_database:add_schema(Schema, ValidationFun, MakeKeyFun).
+
+%% @doc Deletes a schema definition from in-memory storage associated with
+%% the key `Key'.
+-spec del_schema(Key :: any()) -> ok.
+del_schema(Key) ->
+  jesse_database:del_schema(Key).
+
 %% @doc Updates schema definitions in in-memory storage.
 %%
 %% Equivalent to `update_schema(Path, ParseFun, ValidationFun, MakeKeyFun)'

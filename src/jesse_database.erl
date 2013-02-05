@@ -29,7 +29,9 @@
 -module(jesse_database).
 
 %% API
--export([ read_schema/1
+-export([ add_schema/3
+        , del_schema/1
+        , read_schema/1
         , update/4
         ]).
 
@@ -46,6 +48,24 @@
 -include_lib("kernel/include/file.hrl").
 
 %%% API
+%% @doc Adds a schema definition `Schema' to in-memory storage associated with
+%% a key `Key'. It will overwrite an existing schema with the same key if
+%% there is any.
+-spec add_schema( Schema        :: jesse:json_term()
+                , ValidationFun :: fun((any()) -> boolean())
+                , MakeKeyFun    :: fun((jesse:json_term()) -> any())
+                ) -> update_result().
+add_schema(Schema, ValidationFun, MakeKeyFun) ->
+  store_schema([{"", "", Schema}], ValidationFun, MakeKeyFun).
+
+%% @doc Deletes a schema definition from in-memory storage associated with
+%% the key `Key'.
+-spec del_schema(Key :: any()) -> ok.
+del_schema(Key) ->
+  Table = table_name(),
+  ets:delete(Table, Key),
+  ok.
+
 %% @doc Updates schema definitions in in-memory storage. The function loads all
 %% the files from directory `Path', then each schema entry will be checked
 %% for a validity by function `ValidationFun', and will be stored in in-memory
