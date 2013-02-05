@@ -17,12 +17,12 @@
 %% Constant definitions for Json schema keywords
 -define(TYPE,                 <<"type">>).
 -define(PROPERTIES,           <<"properties">>).
--define(PATTERNPROPERTIES,    <<"patternProperties">>).    % NOT IMPLEMENTED YET
+-define(PATTERNPROPERTIES,    <<"patternProperties">>).
 -define(ADDITIONALPROPERTIES, <<"additionalProperties">>).
 -define(ITEMS,                <<"items">>).
 -define(ADDITIONALITEMS,      <<"additionalItems">>).
 -define(REQUIRED,             <<"required">>).
--define(DEPENDENCIES,         <<"dependencies">>).         % NOT IMPLEMENTED YET
+-define(DEPENDENCIES,         <<"dependencies">>).
 -define(MINIMUM,              <<"minimum">>).
 -define(MAXIMUM,              <<"maximum">>).
 -define(EXCLUSIVEMINIMUM,     <<"exclusiveMinimum">>).
@@ -30,7 +30,7 @@
 -define(MINITEMS,             <<"minItems">>).
 -define(MAXITEMS,             <<"maxItems">>).
 -define(UNIQUEITEMS,          <<"uniqueItems">>).
--define(PATTERN,              <<"pattern">>).              % NOT IMPLEMENTED YET
+-define(PATTERN,              <<"pattern">>).
 -define(MINLENGTH,            <<"minLength">>).
 -define(MAXLENGTH,            <<"maxLength">>).
 -define(ENUM,                 <<"enum">>).
@@ -39,7 +39,7 @@
 -define(DESCRIPTION,          <<"description">>).          % NOT IMPLEMENTED YET
 -define(FORMAT,               <<"format">>).               % NOT IMPLEMENTED YET
 -define(DIVISIBLEBY,          <<"divisibleBy">>).
--define(DISALLOW,             <<"disallow">>).             % NOT IMPLEMENTED YET
+-define(DISALLOW,             <<"disallow">>).
 -define(EXTENDS,              <<"extends">>).
 -define(ID,                   <<"id">>).
 -define(_REF,                 <<"$ref">>).                 % NOT IMPLEMENTED YET
@@ -75,19 +75,17 @@
               , Data       :: jesse:json_term()
               ) -> {ok, jesse:json_term()}
                  | no_return().
-validate(JsonSchema, Data) ->
-  {check_property({none, Data}, JsonSchema), Data}.
+validate(JsonSchema, Value) ->
+  {check_value(Value, unwrap(JsonSchema), JsonSchema), Value}.
 
 %% @doc Returns value of "id" field from json object `Schema', assuming that
 %% the given json object has such a field, otherwise an exception
 %% will be thrown.
 -spec get_schema_id(Schema :: jesse:json_term()) -> string().
 get_schema_id(Schema) ->
-  case jesse_json_path:path(?ID, Schema) of
-    [] ->
-      throw({schema_invalid, Schema, missing_id_field});
-    Id ->
-      erlang:binary_to_list(Id)
+  case get_path(?ID, Schema) of
+    [] -> throw({schema_invalid, Schema, missing_id_field});
+    Id -> erlang:binary_to_list(Id)
   end.
 
 %% @doc A naive check if the given data is a json object.
@@ -102,385 +100,607 @@ is_json_object(_)                                   -> false.
 
 %%% Internal functions
 %% @private
-validate_any(Property, Schema) ->
-  check_extends(Property, get_path(?EXTENDS, Schema)),
-  ok.
-
-%% @private
-validate_array({_Key, Value} = Property, Schema) when is_list(Value) ->
-  check_extends(Property, get_path(?EXTENDS, Schema)),
-  check_enum(Property, get_path(?ENUM, Schema)),
-  check_min_items(Property, get_path(?MINITEMS, Schema)),
-  check_max_items(Property, get_path(?MAXITEMS, Schema)),
-  check_items( Property
-             , get_path(?ITEMS, Schema)
-             , Schema
-             ),
-  check_unique_items( Property
-                    , get_path(?UNIQUEITEMS, Schema)
-                    ),
-  ok;
-validate_array(Property, Schema) ->
-  throw({data_invalid, Property, not_array, Schema}).
-
-%% @private
-validate_boolean({_Key, Value} = Property, Schema) when is_boolean(Value) ->
-  check_extends(Property, get_path(?EXTENDS, Schema)),
-  check_enum(Property, get_path(?ENUM, Schema)),
-  ok;
-validate_boolean(Property, Schema) ->
-  throw({data_invalid, Property, not_boolean, Schema}).
-
-%% @private
-validate_integer({_Key, Value} = Property, Schema) when is_integer(Value) ->
-  validate_number(Property, Schema);
-validate_integer(Property, Schema) ->
-  throw({data_invalid, Property, not_integer, Schema}).
-
-%% @private
-validate_null({_Key, null} = Property, Schema) ->
-  check_extends(Property, get_path(?EXTENDS, Schema)),
-  ok;
-validate_null(Property, Schema) ->
-  throw({data_invalid, Property, not_null, Schema}).
-
-%% @private
-validate_number({_Key, Value} = Property, Schema) when is_number(Value) ->
-  check_extends(Property, get_path(?EXTENDS, Schema)),
-  check_enum(Property, get_path(?ENUM, Schema)),
-  check_min( Property
-           , get_path(?MINIMUM, Schema)
-           , get_path(?EXCLUSIVEMINIMUM, Schema)
-           ),
-  check_max( Property
-           , get_path(?MAXIMUM, Schema)
-           , get_path(?EXCLUSIVEMAXIMUM, Schema)
-           ),
-  check_divisible_by( Property
-                    , get_path(?DIVISIBLEBY, Schema)
-                    , Schema
-                    ),
-  ok;
-validate_number(Property, Schema) ->
-  throw({data_invalid, Property, not_number, Schema}).
-
-%% @private
-validate_object({_Key, Value} = Property, Schema) ->
-  check_extends(Property, get_path(?EXTENDS, Schema)),
+check_value(Value, [{?TYPE, Type} | Attrs], JsonSchema) ->
+  check_type(Value, Type, JsonSchema),
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?PROPERTIES, Properties} | Attrs], JsonSchema) ->
   case is_json_object(Value) of
-    true ->
-      check_enum(Property, get_path(?ENUM, Schema)),
-      Properties       = unwrap(Value),
-      PropertiesSchema = get_path(?PROPERTIES, Schema),
-      check_required(Properties, PropertiesSchema),
-      check_properties(Properties, Schema);
+    true  -> check_properties(Value, unwrap(Properties));
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value( Value
+           , [{?PATTERNPROPERTIES, PatternProperties} | Attrs]
+           , JsonSchema
+           ) ->
+  case is_json_object(Value) of
+    true  -> check_pattern_properties(Value, PatternProperties);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value( Value
+           , [{?ADDITIONALPROPERTIES, AdditionalProperties} | Attrs]
+           , JsonSchema
+           ) ->
+  case is_json_object(Value) of
+    true  -> check_additional_properties( Value
+                                        , AdditionalProperties
+                                        , JsonSchema
+                                        );
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?ITEMS, Items} | Attrs], JsonSchema) ->
+  case is_list(Value) of
+    true  -> check_items(Value, Items, JsonSchema);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+%% doesn't really do anything, since this attribute will be handled
+%% by the previous function clause if it's presented in the schema
+check_value( Value
+           , [{?ADDITIONALITEMS, _AdditionalItems} | Attrs]
+           , JsonSchema
+           ) ->
+  check_value(Value, Attrs, JsonSchema);
+%% doesn't really do anything, since this attribute will be handled
+%% by the previous function clause if it's presented in the schema
+check_value(Value, [{?REQUIRED, _Required} | Attrs], JsonSchema) ->
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?DEPENDENCIES, Dependencies} | Attrs], JsonSchema) ->
+  case is_json_object(Value) of
+    true  -> check_dependencies(Value, Dependencies);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?MINIMUM, Minimum} | Attrs], JsonSchema) ->
+  case is_number(Value) of
+    true  ->
+      ExclusiveMinimum = get_path(?EXCLUSIVEMINIMUM, JsonSchema),
+      check_minimum(Value, Minimum, ExclusiveMinimum);
     false ->
-      throw({data_invalid, Property, not_object, Schema})
-  end.
-
-%% @private
-validate_string({_Key, Value} = Property, Schema) when is_binary(Value) ->
-  check_extends(Property, get_path(?EXTENDS, Schema)),
-  check_enum(Property, get_path(?ENUM, Schema)),
-  check_min_length(Property, get_path(?MINLENGTH, Schema)),
-  check_max_length(Property, get_path(?MAXLENGTH, Schema)),
-  ok;
-validate_string(Property, Schema) ->
-  throw({data_invalid, Property, not_string, Schema}).
-
-%%=============================================================================
-%% @private
-check_extends(_Property, []) ->
-  ok;
-check_extends(Property, Schemas) when is_list(Schemas) ->
-  ForeachFun = fun(Schema) ->
-                   check_extends(Property, Schema)
-               end,
-  lists:foreach(ForeachFun, Schemas);
-check_extends(Property, Schema) ->
-  check_property(Property, jesse_database:read_schema(Schema)).
-
-%% @private
-check_properties([], _Schema) ->
-  ok;
-check_properties([{Key, _Value} = Property | Rest], Schema) ->
-  PropertiesSchema = get_path(?PROPERTIES, Schema),
-  case check_property(Property, get_path(Key, PropertiesSchema)) of
-    ok ->
-      check_properties(Rest, Schema);
-    extra_property ->
-      check_additional_property(Property, Schema),
-      check_properties(Rest, Schema)
-  end.
-
-%% @private
-check_property({?LINKS, _} = _Property, _) ->
-  %% TODO: add handling for "links"
-  ok;
-check_property(_Property, []) ->
-  extra_property;
-check_property(Property, Schema) ->
-  case is_json_object(Schema) of
-    true ->
-      SchemaType = get_path(?TYPE, Schema),
-      check_type(SchemaType, Property, Schema);
+      ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?MAXIMUM, Maximum} | Attrs], JsonSchema) ->
+  case is_number(Value) of
+    true  ->
+      ExclusiveMaximum = get_path(?EXCLUSIVEMAXIMUM, JsonSchema),
+      check_maximum(Value, Maximum, ExclusiveMaximum);
     false ->
-      throw({schema_invalid, Schema, not_object})
-  end.
+      ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+%% doesn't really do anything, since this attribute will be handled
+%% by the previous function clause if it's presented in the schema
+check_value( Value
+           , [{?EXCLUSIVEMINIMUM, _ExclusiveMinimum} | Attrs]
+           , JsonSchema
+           ) ->
+  check_value(Value, Attrs, JsonSchema);
+%% doesn't really do anything, since this attribute will be handled
+%% by the previous function clause if it's presented in the schema
+check_value( Value
+           , [{?EXCLUSIVEMAXIMUM, _ExclusiveMaximum} | Attrs]
+           , JsonSchema
+           ) ->
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?MINITEMS, MinItems} | Attrs], JsonSchema) ->
+  case is_list(Value) of
+    true  -> check_min_items(Value, MinItems);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?MAXITEMS, MaxItems} | Attrs], JsonSchema) ->
+  case is_list(Value) of
+    true  -> check_max_items(Value, MaxItems);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?UNIQUEITEMS, Uniqueitems} | Attrs], JsonSchema) ->
+  case is_list(Value) of
+    true  -> check_unique_items(Value, Uniqueitems);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?PATTERN, Pattern} | Attrs], JsonSchema) ->
+  case is_binary(Value) of
+    true  -> check_pattern(Value, Pattern);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?MINLENGTH, MinLength} | Attrs], JsonSchema) ->
+  case is_binary(Value) of
+    true  -> check_min_length(Value, MinLength);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?MAXLENGTH, MaxLength} | Attrs], JsonSchema) ->
+  case is_binary(Value) of
+    true  -> check_max_length(Value, MaxLength);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?ENUM, Enum} | Attrs], JsonSchema) ->
+  check_enum(Value, Enum),
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?FORMAT, Format} | Attrs], JsonSchema) ->
+  check_format(Value, Format),
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?DIVISIBLEBY, DivisibleBy} | Attrs], JsonSchema) ->
+  case is_number(Value) of
+    true  -> check_divisible_by(Value, DivisibleBy, JsonSchema);
+    false -> ok
+  end,
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?DISALLOW, Disallow} | Attrs], JsonSchema) ->
+  check_disallow(Value, Disallow, JsonSchema),
+  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?EXTENDS, Extends} | Attrs], JsonSchema) ->
+  check_extends(Value, Extends),
+  check_value(Value, Attrs, JsonSchema);
+check_value(_Value, [], _JsonSchema) ->
+  ok;
+check_value(Value, [_Attr | Attrs], JsonSchema) ->
+  check_value(Value, Attrs, JsonSchema).
 
+%% @doc to be written
 %% @private
-check_type([],        Property, Schema) -> validate_any(Property, Schema);
-check_type(?ANY,      Property, Schema) -> validate_any(Property, Schema);
-check_type(?ARRAY,    Property, Schema) -> validate_array(Property, Schema);
-check_type(?BOOLEAN,  Property, Schema) -> validate_boolean(Property, Schema);
-check_type(?INTEGER,  Property, Schema) -> validate_integer(Property, Schema);
-check_type(?NULL,     Property, Schema) -> validate_null(Property, Schema);
-check_type(?NUMBER,   Property, Schema) -> validate_number(Property, Schema);
-check_type(?OBJECT,   Property, Schema) -> validate_object(Property, Schema);
-check_type(?STRING,   Property, Schema) -> validate_string(Property, Schema);
-check_type(UnionType, Property, Schema)
-  when is_list(UnionType) ->
+check_type(Value, ?STRING, JsonSchema) ->
+  case is_binary(Value) of
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_string, JsonSchema})
+  end;
+check_type(Value, ?NUMBER, JsonSchema) ->
+  case is_number(Value) of
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_number, JsonSchema})
+  end;
+check_type(Value, ?INTEGER, JsonSchema) ->
+  case is_integer(Value) of
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_integer, JsonSchema})
+  end;
+check_type(Value, ?BOOLEAN, JsonSchema) ->
+  case is_boolean(Value) of
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_boolean, JsonSchema})
+  end;
+check_type(Value, ?OBJECT, JsonSchema) ->
+  case is_json_object(Value) of
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_object, JsonSchema})
+  end;
+check_type(Value, ?ARRAY, JsonSchema) ->
+  case is_list(Value) of
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_array, JsonSchema})
+  end;
+check_type(Value, ?NULL, JsonSchema) ->
+  case Value of
+    null -> ok;
+    _    -> throw({data_invalid, Value, not_null, JsonSchema})
+  end;
+check_type(_Value, ?ANY, _JsonSchema) ->
+  ok;
+check_type(Value, UnionType, JsonSchema) when is_list(UnionType) ->
   IsValid = lists:any( fun(Type) ->
                            try
-                             ok =:= check_type(Type, Property, Schema)
+                             case is_json_object(Type) of
+                               true ->
+                                 %% case when there's a schema in the array,
+                                 %% then we need to validate against
+                                 %% that schema
+                                 ok =:= check_value( Value
+                                                   , unwrap(Type)
+                                                   , Type
+                                                   );
+                               false ->
+                                 ok =:= check_type(Value, Type, JsonSchema)
+                             end
                            catch
                              throw:{data_invalid, _, _, _} -> false;
-                             throw:{schema_invalid, _, _} -> false
+                             throw:{schema_invalid, _, _}  -> false
                            end
                        end
                      , UnionType
                      ),
   case IsValid of
-    true -> ok;
-    false -> throw({data_invalid, Property, not_correct_type, Schema})
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_correct_type, JsonSchema})
   end;
-check_type(_Type, Property, Schema) -> validate_any(Property, Schema).
+check_type(_Value, _Type, _JsonSchema) ->
+  ok.
+
+%% @doc to be written
+%% @private
+check_properties(Value, Properties) ->
+  lists:foreach( fun({PropertyName, PropertySchema}) ->
+                     case get_path(PropertyName, Value) of
+                       [] ->
+                         case get_path(?REQUIRED, PropertySchema) of
+                           true  -> throw({ data_invalid
+                                          , Value
+                                          , missing_required_property
+                                          , PropertyName
+                                          });
+                           _     -> ok
+                         end;
+                       Property -> check_value( Property
+                                               , unwrap(PropertySchema)
+                                               , PropertySchema
+                                               )
+                     end
+                 end
+               , Properties
+               ).
+
+%% @doc
+%% @private
+check_pattern_properties(Value, PatternProperties) ->
+  [ check_match({PropertyName, PropertyValue}, {Pattern, Schema})
+   || {Pattern, Schema} <- unwrap(PatternProperties),
+      {PropertyName, PropertyValue} <- unwrap(Value)],
+  ok.
+
+check_match({PropertyName, PropertyValue}, {Pattern, Schema}) ->
+  case re:run(PropertyName, Pattern, [{capture, none}]) of
+    match   -> check_value(PropertyValue, unwrap(Schema), Schema);
+    nomatch -> ok
+  end.
+
+%% @doc to be written
+%% @private
+check_additional_properties(Value, false, JsonSchema) ->
+  Properties        = get_path(?PROPERTIES, JsonSchema),
+  PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
+  case get_additional_properties(Value, Properties, PatternProperties) of
+    []      -> ok;
+    _Extras -> throw({ data_invalid
+                     , {Value, _Extras}
+                     , no_extra_properties_allowed
+                     , JsonSchema
+                     })
+  end;
+check_additional_properties(_Value, true, _JsonSchema) ->
+  ok;
+check_additional_properties(Value, AdditionalProperties, JsonSchema) ->
+  Properties        = get_path(?PROPERTIES, JsonSchema),
+  PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
+  case get_additional_properties(Value, Properties, PatternProperties) of
+    []     -> ok;
+    Extras -> lists:foreach( fun(Extra) ->
+                                 check_value( Extra
+                                            , unwrap(AdditionalProperties)
+                                            , AdditionalProperties
+                                            )
+                             end
+                           , Extras
+                           )
+  end.
+
+get_additional_properties(Value, Properties, PatternProperties) ->
+  ValuePropertiesNames  = [Name || {Name, _} <- unwrap(Value)],
+  SchemaPropertiesNames = [Name || {Name, _} <- unwrap(Properties)],
+  Patterns    = [Pattern || {Pattern, _} <- unwrap(PatternProperties)],
+  ExtraNames0 = lists:subtract(ValuePropertiesNames, SchemaPropertiesNames),
+  ExtraNames  = lists:foldl( fun(Pattern, ExtraAcc) ->
+                                 filter_extra_names(Pattern, ExtraAcc)
+                             end
+                           , ExtraNames0
+                           , Patterns
+                           ),
+  lists:map(fun(Name) -> get_path(Name, Value) end, ExtraNames).
+
+filter_extra_names(Pattern, ExtraNames) ->
+  Filter = fun(ExtraName) ->
+               case re:run(ExtraName, Pattern, [{capture, none}]) of
+                 match   -> false;
+                 nomatch -> true
+               end
+           end,
+  lists:filter(Filter, ExtraNames).
+
+%% @doc
+%% @private
+check_items(Value, Items, JsonSchema) when is_list(Items) ->
+  Tuples = case length(Value) - length(Items) of
+             0 ->
+               lists:zip(Value, Items);
+             NExtra when NExtra > 0 ->
+               case get_path(?ADDITIONALITEMS, JsonSchema) of
+                 [] ->
+                   [];
+                 true ->
+                   [];
+                 false ->
+                   throw({ data_invalid
+                         , Value
+                         , no_extra_items_allowed
+                         , JsonSchema
+                         });
+                 AdditionalItems ->
+                   ExtraSchemas = lists:duplicate(NExtra, AdditionalItems),
+                   lists:zip(Value, lists:append(Items, ExtraSchemas))
+               end;
+             NExtra when NExtra < 0 ->
+               throw({ data_invalid
+                     , Value
+                     , not_enought_items
+                     , JsonSchema
+                     })
+           end,
+  lists:foreach( fun({Item, Schema}) ->
+                     check_value(Item, unwrap(Schema), Schema)
+                 end
+               , Tuples
+               );
+check_items(Value, Items, _JsonSchema) ->
+  lists:foreach( fun(Item) ->
+                     check_value(Item, unwrap(Items), Items)
+                 end
+               , Value
+               ).
+
+%% @doc
+%% @private
+check_dependencies(Value, Dependencies) ->
+  lists:foreach( fun({DependencyName, DependencyValue}) ->
+                     case get_path(DependencyName, Value) of
+                       [] -> ok;
+                       _  -> check_dependency_value(Value, DependencyValue)
+                     end
+                 end
+               , unwrap(Dependencies)
+               ).
 
 %% @private
-check_enum(_Property, []) ->
+check_dependency_value(Value, Dependency) when is_list(Dependency) ->
+  lists:foreach( fun(PropertyName) ->
+                     check_dependency_value(Value, PropertyName)
+                 end
+               , Dependency
+               );
+check_dependency_value(Value, Dependency) when is_binary(Dependency) ->
+  case get_path(Dependency, Value) of
+    [] -> throw({ data_invalid
+                , Value
+                , missing_dependency
+                , Dependency
+                });
+    _  -> ok
+  end;
+check_dependency_value(Value, Dependency) ->
+  case is_json_object(Dependency) of
+    true  -> check_value(Value, unwrap(Dependency), Dependency);
+    false -> throw({ schema_invalid
+                   , Dependency
+                   , wrong_type_dependency
+                   })
+  end.
+
+%% @doc
+%% @private
+check_minimum(Value, Minimum, ExclusiveMinimum) ->
+  Result = case ExclusiveMinimum of
+             true  -> Value > Minimum;
+             _     -> Value >= Minimum
+           end,
+  case Result of
+    true  -> ok;
+    false -> throw({ data_invalid
+                   , Value
+                   , not_in_range
+                   , {{minimum, Minimum}, {exclusive, ExclusiveMinimum}}
+                   })
+  end.
+
+%%% @doc
+%% @private
+check_maximum(Value, Maximum, ExclusiveMaximum) ->
+  Result = case ExclusiveMaximum of
+             true  -> Value < Maximum;
+             _     -> Value =< Maximum
+           end,
+  case Result of
+    true  -> ok;
+    false -> throw({ data_invalid
+                   , Value
+                   , not_in_range
+                   , {{maximum, Maximum}, {exclusive, ExclusiveMaximum}}
+                   })
+  end.
+
+%% @doc
+%% @private
+check_min_items(Value, MinItems) when length(Value) >= MinItems ->
   ok;
-check_enum({_Key, Value} = Property, Enum) ->
+check_min_items(Value, MinItems) ->
+  throw({ data_invalid
+        , Value
+        , not_correct_size
+        , {min_items, MinItems}
+        }).
+
+%% @doc
+%% @private
+check_max_items(Value, MaxItems) when length(Value) =< MaxItems ->
+  ok;
+check_max_items(Value, MaxItems) ->
+  throw({ data_invalid
+        , Value
+        , not_correct_size
+        , {max_items, MaxItems}
+        }).
+
+%% @doc
+%% @private
+check_unique_items(Value, true = Uniqueitems) ->
+  lists:foldl( fun(_Item, []) ->
+                   ok;
+                  (Item, RestItems) ->
+                   lists:foreach( fun(ItemFromRest) ->
+                                      case is_equal(Item, ItemFromRest) of
+                                        true  -> throw({ data_invalid
+                                                       , Value
+                                                       , {Item, not_unique}
+                                                       , { uniqueItems
+                                                         , Uniqueitems
+                                                         }
+                                                       });
+                                        false -> ok
+                                      end
+                                  end
+                                , RestItems
+                                ),
+                   tl(RestItems)
+               end
+             , tl(Value)
+             , Value
+             ),
+  ok.
+
+%% @doc
+%% @private
+check_pattern(Value, Pattern) ->
+  case re:run(Value, Pattern, [{capture, none}]) of
+    match   -> ok;
+    nomatch -> throw({ data_invalid
+                     , Value
+                     , no_match
+                     , Pattern
+                     })
+  end.
+
+%% @doc
+%% @private
+check_min_length(Value, MinLength) ->
+  case length(unicode:characters_to_list(Value)) >= MinLength of
+    true  -> ok;
+    false -> throw({ data_invalid
+                   , Value
+                   , not_correct_length
+                   , {min_length, MinLength}
+                   })
+  end.
+
+%% @doc
+%% @private
+check_max_length(Value, MaxLength) ->
+  case length(unicode:characters_to_list(Value)) =< MaxLength of
+    true  -> ok;
+    false -> throw({ data_invalid
+                   , Value
+                   , not_correct_length
+                   , {max_length, MaxLength}
+                   })
+  end.
+
+%% @doc
+%% @private
+check_enum(Value, Enum) ->
   IsValid = lists:any( fun(ExpectedValue) ->
-                           Value =:= ExpectedValue
+                           is_equal(Value, ExpectedValue)
                        end
                      , Enum
                      ),
   case IsValid of
-    true -> ok;
-    false -> throw({data_invalid, Property, not_in_enum, Enum})
+    true  -> ok;
+    false -> throw({data_invalid, Value, not_in_enum, Enum})
   end.
 
-%% @private
-check_min(_Property, [], _Excl) ->
-  ok;
-check_min({_Key, Value}, Min, true) when Value > Min ->
-  ok;
-check_min({_Key, Value}, Min, _Excl) when Value >= Min ->
-  ok;
-check_min(Property, Min, Excl) ->
-  throw({ data_invalid
-        , Property
-        , not_in_range
-        , {{minimum, Min}, {exclusive, Excl}}
-        }).
+%% TODO:
+check_format(_Value, _Format) -> ok.
 
+%% @doc
 %% @private
-check_max(_Property, [], _Excl) ->
-  ok;
-check_max({_Key, Value}, Max, true) when Value < Max ->
-  ok;
-check_max({_Key, Value}, Max, _Excl) when Value =< Max ->
-  ok;
-check_max(Property, Max, Excl) ->
-  throw({ data_invalid
-        , Property
-        , not_in_range
-        , {{maximum, Max}, {exclusive, Excl}}
-        }).
-
-%% @private
-check_divisible_by(_Property, [], _ParentSchema) ->
-  ok;
-check_divisible_by(_Property, 0, ParentSchema) ->
+check_divisible_by(_Value, 0, JsonSchema) ->
   throw({ schema_invalid
-        , ParentSchema
+        , JsonSchema
         , {divide_by, 0}
         });
-check_divisible_by({_Key, Value} = Property, Divider, _ParentSchema) ->
-  case Value rem Divider of
-    0 ->
-      ok;
-    _ ->
-      throw({ data_invalid
-            , Property
-            , not_divisible_by
-            , Divider
-            })
+check_divisible_by(Value, DivisibleBy, _JsonSchema) ->
+  Result = (Value / DivisibleBy - trunc(Value / DivisibleBy)) * DivisibleBy,
+  case Result of
+    0.0 -> ok;
+    _   -> throw({ data_invalid
+                 , Value
+                 , not_divisible_by
+                 , DivisibleBy
+                 })
   end.
 
+%% @doc
 %% @private
-check_min_length(_Property, []) ->
-  ok;
-check_min_length({_Key, Value} = Property, Min) ->
-  case length(unicode:characters_to_list(Value)) >= Min of
-    true ->
-      ok;
-    false ->
-      throw({ data_invalid
-            , Property
-            , not_correct_length
-            , {min_length, Min}
-            })
+check_disallow(Value, Disallow, JsonSchema) ->
+  try check_type(Value, Disallow, []) of
+      ok -> throw({data_invalid, Value, disallowed, JsonSchema})
+  catch
+    throw:{data_invalid, _, _, _} -> ok
   end.
 
+%% @doc
 %% @private
-check_max_length(_Property, []) ->
-  ok;
-check_max_length({_Key, Value} = Property, Max) ->
-  case length(unicode:characters_to_list(Value)) =< Max of
-    true ->
-      ok;
-    false ->
-      throw({ data_invalid
-            , Property
-            , not_correct_length
-            , {max_length, Max}
-            })
-  end.
-
-%% @private
-check_min_items(_Property, []) ->
-  ok;
-check_min_items({_Key, Array}, Min) when length(Array) >= Min ->
-  ok;
-check_min_items(Property, Min) ->
-  throw({ data_invalid
-        , Property
-        , not_correct_size
-        , {min_items, Min}
-        }).
-
-%% @private
-check_max_items(_Property, []) ->
-  ok;
-check_max_items({_Key, Array}, Max) when length(Array) =< Max ->
-  ok;
-check_max_items(Property, Max) ->
-  throw({ data_invalid
-        , Property
-        , not_correct_size
-        , {max_items, Max}
-        }).
-
-%% @private
-check_items(_Property, [], _ParentSchema) ->
-  ok;
-check_items(Property, Schema, ParentSchema) when is_list(Schema) ->
-  check_array_schema(Property, Schema, ParentSchema);
-check_items({Key, Values} = _Property, Schema, _ParentSchema) ->
-  lists:foreach( fun(Value) ->
-                     check_property({Key, Value}, Schema)
+check_extends(Value, Extends) when is_list(Extends) ->
+  lists:foreach( fun(SchemaKey) ->
+                     check_extends(Value, SchemaKey)
                  end
-               , Values
-               ).
-
-%% @private
-check_array_schema({_Key, []}, _Schema, _ParentSchema) ->
-  ok;
-check_array_schema({Key, [Item | Rest]}, [], ParentSchema) ->
-  case get_path(?ADDITIONALITEMS, ParentSchema) of
+               , Extends
+               );
+check_extends(Value, Extends) ->
+  case is_json_object(Extends) of
+    true  ->
+      check_value(Value, unwrap(Extends), Extends);
     false ->
-      throw({ data_invalid
-            , {Key, Item}
-            , no_extra_items_allowed
-            , ParentSchema
-            });
-    true ->
-      ok;
-    [] ->
-      ok;
-    AdditionalSchema ->
-      check_property({Key, Item}, AdditionalSchema),
-      check_array_schema({Key, Rest}, [], ParentSchema)
-  end;
-check_array_schema({Key, [Item | RestItems]}, [Schema | Rest], ParentSchema) ->
-  check_property({Key, Item}, Schema),
-  check_array_schema({Key, RestItems}, Rest, ParentSchema).
-
-%% @private
-check_unique_items(_Property, []) ->
-  ok;
-check_unique_items(_Property, false) ->
-  ok;
-check_unique_items({_Key, []}, _UniqueItems) ->
-  ok;
-check_unique_items({_Key, [_Item]}, _UniqueItems) ->
-  ok;
-check_unique_items({_Key, [_Item1, _Item2]}, _UniqueItems) ->
-  ok;
-check_unique_items({Key, [Item, Item | _Rest]}, UniqueItems) ->
-  throw({ data_invalid
-        , {Key, Item}
-        , not_unique_item
-        , {unique_items, UniqueItems}
-        });
-check_unique_items({Key, [Item1, Item2 | Rest]}, UniqueItems) ->
-  check_unique_items({Key, [Item1, Rest]}, UniqueItems),
-  check_unique_items({Key, [Item2, Rest]}, UniqueItems).
-
-%% @private
-check_required(Properties, PropertiesSchema) ->
-  Required = get_required(to_proplist(PropertiesSchema)),
-  lists:foreach( fun(Name) ->
-                     case get_path(Name, Properties) of
-                       [] ->
-                         throw({ data_invalid
-                               , Properties
-                               , missing_required_property
-                               , Name
-                               });
-                       _RequiredProperty ->
-                         true
-                     end
-                 end
-               , Required
-               ),
-  ok.
-
-%% @private
-get_required(PropertiesSchema) ->
-  lists:filter( fun(Property) ->
-                    true =:= get_path(?REQUIRED, Property)
-                end
-              , PropertiesSchema
-              ).
-
-%% @private
-check_additional_property(Property, Schema) ->
-  case get_path(?ADDITIONALPROPERTIES, Schema) of
-    false ->
-      throw({ data_invalid
-            , Property
-            , no_extra_properties_allowed
-            , Schema
-            });
-    true ->
-      ok;
-    [] ->
-      ok;
-    AdditionalSchema ->
-      check_property(Property, AdditionalSchema)
+      %% TODO: implement handling of $ref
+      ok
   end.
+
+%%=============================================================================
+%% @doc
+%% private
+is_equal(Value1, Value2) ->
+  case is_json_object(Value1) andalso is_json_object(Value2) of
+    true  -> compare_objects(Value1, Value2);
+    false -> case is_list(Value1) andalso is_list(Value2) of
+               true  -> compare_lists(Value1, Value2);
+               false -> Value1 =:= Value2
+             end
+  end.
+
+compare_lists(Value1, Value2) ->
+  case length(Value1) =:= length(Value2) of
+    true  -> compare_elements(Value1, Value2);
+    false -> false
+  end.
+
+compare_elements(Value1, Value2) ->
+  lists:all( fun({Element1, Element2}) ->
+                 is_equal(Element1, Element2)
+             end
+           , lists:zip(Value1, Value2)
+           ).
+
+compare_objects(Value1, Value2) ->
+  case length(unwrap(Value1)) =:= length(unwrap(Value2)) of
+    true  -> compare_properties(Value1, Value2);
+    false -> false
+  end.
+
+compare_properties(Value1, Value2) ->
+  lists:all( fun({PropertyName1, PropertyValue1}) ->
+                 case get_path(PropertyName1, Value2) of
+                   []             -> false;
+                   PropertyValue2 -> is_equal(PropertyValue1, PropertyValue2)
+                 end
+             end
+           , unwrap(Value1)
+           ).
 
 %%=============================================================================
 %% @private
 get_path(Key, Schema) ->
   jesse_json_path:path(Key, Schema).
-
-
-%% @private
-to_proplist(Value) ->
-  jesse_json_path:to_proplist(Value).
 
 %% @private
 unwrap(Value) ->
