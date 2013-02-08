@@ -97,111 +97,111 @@ end_per_suite(_Config) ->
 additionalItems(Config) ->
   Key   = "additionalItems",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 additionalProperties(Config) ->
   Key   = "additionalProperties",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 dependencies(Config) ->
   Key   = "dependencies",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 disallow(Config) ->
   Key   = "disallow",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 divisibleBy(Config) ->
   Key   = "divisibleBy",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 enum(Config) ->
   Key   = "enum",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 extends(Config) ->
   Key   = "extends",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 items(Config) ->
   Key   = "items",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 maximum(Config) ->
   Key   = "maximum",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 maxItems(Config) ->
   Key   = "maxItems",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 maxLength(Config) ->
   Key   = "maxLength",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 minimum(Config) ->
   Key   = "minimum",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 minItems(Config) ->
   Key   = "minItems",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 minLength(Config) ->
   Key   = "minLength",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 pattern(Config) ->
   Key   = "pattern",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 patternProperties(Config) ->
   Key   = "patternProperties",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 properties(Config) ->
   Key   = "properties",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 %% not implemented yet
 %% ref(Config) ->
 %%   Key   = "ref",
 %%   Specs = ?config(Key, Config),
-%%   ok    = run_tests(Key, Specs).
+%%   ok    = run_tests(Specs).
 
 required(Config) ->
   Key   = "required",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 type(Config) ->
   Key   = "type",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 uniqueItems(Config) ->
   Key   = "uniqueItems",
   Specs = ?config(Key, Config),
-  ok    = run_tests(Key, Specs).
+  ok    = run_tests(Specs).
 
 %%% Internal functions
-run_tests(Key, Specs) ->
+run_tests(Specs) ->
   lists:foreach( fun(Spec) ->
                      Description = get_path(?DESCRIPTION, Spec),
                      Schema      = get_path(?SCHEMA, Spec),
