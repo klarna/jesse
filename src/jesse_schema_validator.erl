@@ -629,8 +629,8 @@ check_minimum(Value, Minimum, ExclusiveMinimum) ->
 %% value can be greater then or equal to the minimum value.
 %% @end
   Result = case ExclusiveMinimum of
-             true  -> Value > Minimum;
-             _     -> Value >= Minimum
+             true -> Value > Minimum;
+             _    -> Value >= Minimum
            end,
   case Result of
     true  -> ok;
@@ -655,8 +655,8 @@ check_maximum(Value, Maximum, ExclusiveMaximum) ->
 %% value can be less then or equal to the maximum value.
 %% @end
   Result = case ExclusiveMaximum of
-             true  -> Value < Maximum;
-             _     -> Value =< Maximum
+             true -> Value < Maximum;
+             _    -> Value =< Maximum
            end,
   case Result of
     true  -> ok;
