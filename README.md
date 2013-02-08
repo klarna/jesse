@@ -1,35 +1,101 @@
+=====
 jesse
 =====
 
 jesse (JSon Schema Erlang) is an implementation of a json schema validator
-for Erlang. Currently, it implements most of "useful" parts of the following
-standard draft: http://tools.ietf.org/html/draft-zyp-json-schema-03.
+for Erlang.
 
-A list of non-implemented features could be found in jesse_schema_validator.erl.
-As soon as there are new drafts coming, the implementation will be updated
-accordingly.
+jesse implements [Draft 03] (http://tools.ietf.org/html/draft-zyp-json-schema-03) of
+the specification. It supports almost all core schema definitions except:
+
+* format
+* $ref
 
 Quick start
 -----------
 
-* Add jesse as a rebar dependency to your application.
-* Update schema definitions:
+There are two ways of using jesse:
 
-```erlang
-1> jesse:update_schema("path/to/json/schema/files/", fun jiffy:decode/1)
-```
+* to use jesse internal in-memory storage to keep all your schema definitions
+  In this case jesse will lookup for a schema definition in its own storage,
+  and then validate given json.
+* it is also possible to provide jesse with schema definitions when jesse is called.
 
-* Use the validation function whenever you need:
+Examples
+--------
 
-```erlang
-2> jesse:validate("message-v1.json#", jiffy:decode(<<"{\"text\": \"some text\"}">>)).
-{ok,{[{<<"text">>,<<"some text">>}]}}
-3> jesse:validate("message-v1.json#", jiffy:decode(<<"{\"text\": 42}">>)).
-{error,{data_invalid,{<<"text">>,42},
-                     not_string,
-                     {[{<<"title">>,<<"Message text">>},
-                       {<<"type">>,<<"string">>},
-                       {<<"example">>,<<"hello, world">>}]}}}
-```
+NOTE: jesse doesn't have any parsing functionality, it works with either mochijson2
+      format or EEP18 format, so json needs to be parsed in advance, or you can
+      specify a callback which jesse will use to parse json.
 
-More documentation is coming soon...
+      In examples below and in jesse test suite jiffy parser is used.
+
+* Use jesse internal in-memory storage:
+
+(parse json in advance)
+
+    1> Schema = jiffy:decode(<<"{\"items\": {\"type\": \"integer\"}}">>).
+    {[{<<"items">>,{[{<<"type">>,<<"integer">>}]}}]}
+    2> jesse:add_schema(some_key, Schema).
+    ok
+    3> Json1 = jiffy:decode(<<"[1, 2, 3]">>).
+    [1,2,3]
+    4> jesse:validate(some_key, Json1).
+    {ok,[1,2,3]}
+    5> Json2 = jiffy:decode(<<"[1, \"x\"]">>).
+    [1,<<"x">>]
+    6> jesse:validate(some_key, Json2).
+    {error,{data_invalid,<<"x">>,not_integer,
+                         {[{<<"type">>,<<"integer">>}]}}}"]")
+
+(using a callback)
+
+    1> jesse:add_schema(some_key,
+    1>                  <<"{\"uniqueItems\": true}">>,
+    1>                  fun jiffy:decode/1).
+    ok
+    2> jesse:validate(some_key,
+    2>                <<"[1, 2]">>,
+    2>                fun jiffy:decode/1).
+    {ok,[1,2]}
+    3> jesse:validate(some_key,
+    3>                <<"[{\"foo\": \"bar\"}, {\"foo\": \"bar\"}] ">>,
+    3>                fun jiffy:decode/1).
+    {error,{data_invalid,[{[{<<"foo">>,<<"bar">>}]},
+                          {[{<<"foo">>,<<"bar">>}]}],
+                         {{[{<<"foo">>,<<"bar">>}]},not_unique},
+                         {uniqueItems,true}}}
+
+* Call jesse with schema definition in place (do not use internal storage)
+
+(parse json in advance)
+
+    1> Schema = jiffy:decode(<<"{\"pattern\": \"^a*$\"}">>).
+    {[{<<"pattern">>,<<"^a*$">>}]}
+    2> Json1 = jiffy:decode(<<"\"aaa\"">>).
+    <<"aaa">>
+    3> jesse:validate_with_schema(Schema, Json1).
+    {ok,<<"aaa">>}
+    4> Json2 = jiffy:decode(<<"\"abc\"">>).
+    <<"abc">>
+    5> jesse:validate_with_schema(Schema, Json2).
+    {error,{data_invalid,<<"abc">>,no_match,<<"^a*$">>}}
+
+(using a callback)
+
+    1> Schema = <<"{\"patternProperties\": {\"f.*o\": {\"type\": \"integer\"}}}">>.
+    <<"{\"patternProperties\": {\"f.*o\": {\"type\": \"integer\"}}}">>
+    2> jesse:validate_with_schema(Schema,
+    2>                            <<"{\"foo\": 1, \"foooooo\" : 2}">>,
+    2>                            fun jiffy:decode/1).
+    {ok,{[{<<"foo">>,1},{<<"foooooo">>,2}]}}
+    3> jesse:validate_with_schema(Schema,
+    3>                            <<"{\"foo\": \"bar\", \"fooooo\": 2}">>,
+    3>                            fun jiffy:decode/1).
+    {error,{data_invalid,<<"bar">>,not_integer,
+                         {[{<<"type">>,<<"integer">>}]}}}""}]""}")
+
+Contributing
+------------
+
+If you see something missing or incorrect, a pull request is most welcome!
