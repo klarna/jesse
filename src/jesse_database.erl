@@ -78,7 +78,7 @@ del_schema(Key) ->
 %% Schema definitions are stored in the format which json parsing function
 %% `ParseFun' returns.
 -spec update( Path          :: string()
-            , ParseFun      :: fun((any()) -> jesse:json_term())
+            , ParseFun      :: fun((binary()) -> jesse:json_term())
             , ValidationFun :: fun((any()) -> boolean())
             , MakeKeyFun    :: fun((jesse:json_term()) -> any())
             ) -> update_result().

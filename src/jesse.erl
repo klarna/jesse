@@ -59,7 +59,7 @@ del_schema(Key) ->
 %% where `ValidationFun' is `fun jesse_json:is_json_object/1' and
 %% `MakeKeyFun' is `fun jesse_schema_validator:get_schema_id/1'.
 -spec update_schema( Path     :: string()
-                   , ParseFun :: fun((any()) -> json_term())
+                   , ParseFun :: fun((binary()) -> json_term())
                    ) -> jesse_database:update_result().
 update_schema(Path, ParseFun) ->
   update_schema( Path
@@ -80,7 +80,7 @@ update_schema(Path, ParseFun) ->
 %% Schema definitions are stored in the format which json parsing function
 %% `ParseFun' returns.
 -spec update_schema( Path          :: string()
-                   , ParseFun      :: fun((any()) -> json_term())
+                   , ParseFun      :: fun((binary()) -> json_term())
                    , ValidationFun :: fun((any()) -> boolean())
                    , MakeKeyFun    :: fun((json_term()) -> any())
                    ) -> jesse_database:update_result().
