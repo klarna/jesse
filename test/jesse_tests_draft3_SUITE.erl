@@ -207,18 +207,17 @@ run_tests(Key, Specs) ->
                      Schema      = get_path(?SCHEMA, Spec),
                      TestSet     = get_path(?TESTS, Spec),
                      io:format("** Test set: ~s~n", [Description]),
-                     jesse:add_schema(Key, Schema),
-                     run_test_set(Key, TestSet)
+                     run_test_set(Schema, TestSet)
                  end
                , Specs
                ).
 
-run_test_set(Key, TestSet) ->
+run_test_set(Schema, TestSet) ->
   lists:foreach( fun(Test) ->
                      Description = get_path(?DESCRIPTION, Test),
                      TestData    = get_path(?DATA, Test),
                      io:format("* Test case: ~s~n", [Description]),
-                     Result = jesse:validate(Key, TestData),
+                     Result = jesse:validate_with_schema(Schema, TestData),
                      io:format("Result: ~p~n", [Result]),
                      case get_path(?VALID, Test) of
                        true  -> {ok, TestData} = Result;
