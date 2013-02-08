@@ -26,10 +26,14 @@
 
 %% API
 -export([ add_schema/2
+        , add_schema/3
         , del_schema/1
         , update_schema/2
         , update_schema/4
         , validate/2
+        , validate/3
+        , validate_with_schema/2
+        , validate_with_schema/3
         ]).
 
 -export_type([ json_term/0
@@ -46,6 +50,16 @@ add_schema(Key, Schema) ->
   ValidationFun = fun jesse_schema_validator:is_json_object/1,
   MakeKeyFun    = fun(_) -> Key end,
   jesse_database:add_schema(Schema, ValidationFun, MakeKeyFun).
+
+%% @doc Equivalent to `add_schema/2', but `Schema' is a binary string, and
+%% the third agument is a parse function to convert the binary string to
+%% a supported internal representation of json.
+add_schema(Key, Schema, ParseFun) ->
+  case try_parse(ParseFun, Schema) of
+    {parse_error, _} = SError -> {error, {schema_error, SError}};
+    ParsedSchema              -> add_schema(Key, ParsedSchema)
+  end.
+
 
 %% @doc Deletes a schema definition from in-memory storage associated with
 %% the key `Key'.
@@ -79,6 +93,10 @@ update_schema(Path, ParseFun) ->
 %%
 %% Schema definitions are stored in the format which json parsing function
 %% `ParseFun' returns.
+%%
+%% NOTE: it's impossible to automatically update schema definitions added by
+%%       add_schema/2, the only way to update them is to use add_schema/2
+%%       again with the new definition.
 -spec update_schema( Path          :: string()
                    , ParseFun      :: fun((binary()) -> json_term())
                    , ValidationFun :: fun((any()) -> boolean())
@@ -100,6 +118,67 @@ validate(Schema, Data) ->
   catch
     throw:Error ->
       {error, Error}
+  end.
+
+%% @doc Equivalent to `validate/2', but `Data' is a binary string, and
+%% the third agument is a parse function to convert the binary string to
+%% a supported internal representation of json.
+-spec validate( Schema   :: any()
+              , Data     :: binary()
+              , ParseFun :: fun((binary()) -> json_term())
+              ) -> {ok, json_term()}
+                 | {error, term()}.
+validate(Schema, Data, ParseFun) ->
+  case try_parse(ParseFun, Data) of
+    {parse_error, _} = DError -> {error, {data_error, DError}};
+    ParsedJson                -> validate(Schema, ParsedJson)
+  end.
+
+%% @doc Validates json `Data' agains the given schema `Schema'. If the given
+%% json is valid, the it is returned to the caller, otherwise an error with
+%% an appropriate error reason is returned.
+-spec validate_with_schema( Schema :: json_term()
+                          , Data   :: json_term()
+                          ) -> {ok, json_term()}
+                             | {error, term()}.
+validate_with_schema(Schema, Data) ->
+  try
+    jesse_schema_validator:validate(Schema, Data)
+  catch
+    throw:Error ->
+      {error, Error}
+  end.
+
+%% @doc Equivalent to `validate_with_schema/2', but both `Schema' and
+%% `Data' are binary strings, and the third arguments is a parse function
+%% to convert the binary string to a supported internal representation of json.
+-spec validate_with_schema( Schema   :: binary()
+                          , Data     :: binary()
+                          , ParseFun :: fun((binary()) -> json_term())
+                          ) -> {ok, json_term()}
+                             | {error, term()}.
+validate_with_schema(Schema, Data, ParseFun) ->
+  case try_parse(ParseFun, Schema) of
+    {parse_error, _} = SError ->
+      {error, {schema_error, SError}};
+    ParsedSchema ->
+      case try_parse(ParseFun, Data) of
+        {parse_error, _} = DError ->
+          {error, {data_error, DError}};
+        ParsedData ->
+          validate_with_schema(ParsedSchema, ParsedData)
+      end
+  end.
+
+%%% Internal functions
+%% @doc Wraps up calls to a third party json parser.
+%% @private
+try_parse(ParseFun, JsonBin) ->
+  try
+    ParseFun(JsonBin)
+  catch
+    _:Error ->
+      {parse_error, Error}
   end.
 
 %%% Local Variables:
