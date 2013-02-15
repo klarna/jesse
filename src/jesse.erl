@@ -49,7 +49,7 @@
 add_schema(Key, Schema) ->
   ValidationFun = fun jesse_schema_validator:is_json_object/1,
   MakeKeyFun    = fun(_) -> Key end,
-  jesse_database:add_schema(Schema, ValidationFun, MakeKeyFun).
+  jesse_database:add(Schema, ValidationFun, MakeKeyFun).
 
 %% @doc Equivalent to `add_schema/2', but `Schema' is a binary string, and
 %% the third agument is a parse function to convert the binary string to
@@ -65,7 +65,7 @@ add_schema(Key, Schema, ParseFun) ->
 %% the key `Key'.
 -spec del_schema(Key :: any()) -> ok.
 del_schema(Key) ->
-  jesse_database:del_schema(Key).
+  jesse_database:delete(Key).
 
 %% @doc Updates schema definitions in in-memory storage.
 %%
@@ -113,7 +113,7 @@ update_schema(Path, ParseFun, ValidationFun, MakeKeyFun) ->
                                                       | {error, term()}.
 validate(Schema, Data) ->
   try
-    JsonSchema = jesse_database:read_schema(Schema),
+    JsonSchema = jesse_database:read(Schema),
     jesse_schema_validator:validate(JsonSchema, Data)
   catch
     throw:Error ->
