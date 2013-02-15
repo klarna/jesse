@@ -29,9 +29,9 @@
 -module(jesse_database).
 
 %% API
--export([ add_schema/3
-        , del_schema/1
-        , read_schema/1
+-export([ add/3
+        , delete/1
+        , read/1
         , update/4
         ]).
 
@@ -51,17 +51,17 @@
 %% @doc Adds a schema definition `Schema' to in-memory storage associated with
 %% a key `Key'. It will overwrite an existing schema with the same key if
 %% there is any.
--spec add_schema( Schema        :: jesse:json_term()
-                , ValidationFun :: fun((any()) -> boolean())
-                , MakeKeyFun    :: fun((jesse:json_term()) -> any())
-                ) -> update_result().
-add_schema(Schema, ValidationFun, MakeKeyFun) ->
+-spec add( Schema        :: jesse:json_term()
+         , ValidationFun :: fun((any()) -> boolean())
+         , MakeKeyFun    :: fun((jesse:json_term()) -> any())
+         ) -> update_result().
+add(Schema, ValidationFun, MakeKeyFun) ->
   store_schema([{"", "", Schema}], ValidationFun, MakeKeyFun).
 
 %% @doc Deletes a schema definition from in-memory storage associated with
 %% the key `Key'.
--spec del_schema(Key :: any()) -> ok.
-del_schema(Key) ->
+-spec delete(Key :: any()) -> ok.
+delete(Key) ->
   Table = table_name(),
   ets:delete(Table, Key),
   ok.
@@ -88,8 +88,8 @@ update(Path, ParseFun, ValidationFun, MakeKeyFun) ->
 
 %% @doc Reads a schema definition with the same key as `Key' from the internal
 %% storage. If there is no such key in the storage, an exception will be thrown.
--spec read_schema(Key :: any()) -> jesse:json_term() | no_return().
-read_schema(Key) ->
+-spec read(Key :: any()) -> jesse:json_term() | no_return().
+read(Key) ->
   case ets:lookup(table_name(), Key) of
     [{Key, _SecondaryKey, _TimeStamp, Term}] ->
       Term;
