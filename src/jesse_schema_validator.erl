@@ -49,28 +49,12 @@
 -define(MINLENGTH,            <<"minLength">>).
 -define(MAXLENGTH,            <<"maxLength">>).
 -define(ENUM,                 <<"enum">>).
--define(DEFAULT,              <<"default">>).              % NOT IMPLEMENTED YET
--define(TITLE,                <<"title">>).                % NOT IMPLEMENTED YET
--define(DESCRIPTION,          <<"description">>).          % NOT IMPLEMENTED YET
 -define(FORMAT,               <<"format">>).               % NOT IMPLEMENTED YET
 -define(DIVISIBLEBY,          <<"divisibleBy">>).
 -define(DISALLOW,             <<"disallow">>).
 -define(EXTENDS,              <<"extends">>).
 -define(ID,                   <<"id">>).
 -define(_REF,                 <<"$ref">>).                 % NOT IMPLEMENTED YET
--define(_SCHEMA,              <<"$schema">>).              % NOT IMPLEMENTED YET
--define(LINKS,                <<"links">>).                % NOT IMPLEMENTED YET
--define(HREF,                 <<"href">>).                 % NOT IMPLEMENTED YET
--define(REL,                  <<"rel">>).                  % NOT IMPLEMENTED YET
--define(TARGETSCHEMA,         <<"targetSchema">>).         % NOT IMPLEMENTED YET
--define(METHOD,               <<"method">>).               % NOT IMPLEMENTED YET
--define(ENCTYPE,              <<"enctype">>).              % NOT IMPLEMENTED YET
--define(SCHEMA,               <<"schema">>).               % NOT IMPLEMENTED YET
--define(FRAGMENTRESOLUTION,   <<"fragmentResolution">>).   % NOT IMPLEMENTED YET
--define(READONLY,             <<"readonly">>).             % NOT IMPLEMENTED YET
--define(CONTENTENCODING,      <<"contentEncoding">>).      % NOT IMPLEMENTED YET
--define(PATHSTART,            <<"pathStart">>).            % NOT IMPLEMENTED YET
--define(MEDIATYPE,            <<"mediaType">>).            % NOT IMPLEMENTED YET
 
 %% Constant definitions for Json types
 -define(ANY,                  <<"any">>).
