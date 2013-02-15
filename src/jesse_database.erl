@@ -66,10 +66,11 @@ delete(Key) ->
   ets:delete(Table, Key),
   ok.
 
-%% @doc Updates schema definitions in in-memory storage. The function loads all
-%% the files from directory `Path', then each schema entry will be checked
-%% for a validity by function `ValidationFun', and will be stored in in-memory
-%% storage with a key returned by `MakeKeyFun' function.
+%% @doc Loads schema definitions from filesystem to in-memory storage.
+%% The function loads all the files from directory `Path', then each schema
+%% entry will be checked for a validity by function `ValidationFun', and
+%% will be stored in in-memory storage with a key returned by `MakeKeyFun'
+%% function.
 %%
 %% In addition to a schema definition, a timestamp of the schema file will be
 %% stored, so, during the next update timestamps will be compared to avoid
@@ -77,6 +78,10 @@ delete(Key) ->
 %%
 %% Schema definitions are stored in the format which json parsing function
 %% `ParseFun' returns.
+%%
+%% NOTE: it's impossible to automatically update schema definitions added by
+%%       add_schema/2, the only way to update them is to use add_schema/2
+%%       again with the new definition.
 -spec update( Path          :: string()
             , ParseFun      :: fun((binary()) -> jesse:json_term())
             , ValidationFun :: fun((any()) -> boolean())
