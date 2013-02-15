@@ -28,8 +28,8 @@
 -export([ add_schema/2
         , add_schema/3
         , del_schema/1
-        , update_schema/2
-        , update_schema/4
+        , load_schemas/2
+        , load_schemas/4
         , validate/2
         , validate/3
         , validate_with_schema/2
@@ -40,12 +40,13 @@
              ]).
 
 -type json_term() :: term().
+-type error()     :: {error, term()}.
 
 %%% API
 %% @doc Adds a schema definition `Schema' to in-memory storage associated with
 %% a key `Key'. It will overwrite an existing schema with the same key if
 %% there is any.
--spec add_schema(Key :: any(), Schema :: json_term()) -> ok.
+-spec add_schema(Key :: any(), Schema :: json_term()) -> ok | error().
 add_schema(Key, Schema) ->
   ValidationFun = fun jesse_schema_validator:is_json_object/1,
   MakeKeyFun    = fun(_) -> Key end,
@@ -54,6 +55,10 @@ add_schema(Key, Schema) ->
 %% @doc Equivalent to `add_schema/2', but `Schema' is a binary string, and
 %% the third agument is a parse function to convert the binary string to
 %% a supported internal representation of json.
+-spec add_schema( Key      :: any()
+                , Schema   :: binary()
+                , ParseFun :: fun((binary()) -> json_term())
+                ) -> ok | error().
 add_schema(Key, Schema, ParseFun) ->
   case try_parse(ParseFun, Schema) of
     {parse_error, _} = SError -> {error, {schema_error, SError}};
@@ -67,25 +72,27 @@ add_schema(Key, Schema, ParseFun) ->
 del_schema(Key) ->
   jesse_database:delete(Key).
 
-%% @doc Updates schema definitions in in-memory storage.
+%% @doc Loads schema definitions from filesystem to in-memory storage.
 %%
-%% Equivalent to `update_schema(Path, ParseFun, ValidationFun, MakeKeyFun)'
+%% Equivalent to `load_schemas(Path, ParseFun, ValidationFun, MakeKeyFun)'
 %% where `ValidationFun' is `fun jesse_json:is_json_object/1' and
-%% `MakeKeyFun' is `fun jesse_schema_validator:get_schema_id/1'.
--spec update_schema( Path     :: string()
-                   , ParseFun :: fun((binary()) -> json_term())
-                   ) -> jesse_database:update_result().
-update_schema(Path, ParseFun) ->
-  update_schema( Path
-               , ParseFun
-               , fun jesse_schema_validator:is_json_object/1
-               , fun jesse_schema_validator:get_schema_id/1
-               ).
+%% `MakeKeyFun' is `fun jesse_schema_validator:get_schema_id/1'. In this case
+%% the key will be the value of `id' attribute from the given schemas.
+-spec load_schemas( Path     :: string()
+                  , ParseFun :: fun((binary()) -> json_term())
+                  ) -> jesse_database:update_result().
+load_schemas(Path, ParseFun) ->
+  load_schemas( Path
+              , ParseFun
+              , fun jesse_schema_validator:is_json_object/1
+              , fun jesse_schema_validator:get_schema_id/1
+              ).
 
-%% @doc Updates schema definitions in in-memory storage. The function loads all
-%% the files from directory `Path', then each schema entry will be checked
-%% for a validity by function `ValidationFun', and will be stored in in-memory
-%% storage with a key returned by `MakeKeyFun' function.
+%% @doc Loads schema definitions from filesystem to in-memory storage.
+%% The function loads all the files from directory `Path', then each schema
+%% entry will be checked for a validity by function `ValidationFun', and
+%% will be stored in in-memory storage with a key returned by `MakeKeyFun'
+%% function.
 %%
 %% In addition to a schema definition, a timestamp of the schema file will be
 %% stored, so, during the next update timestamps will be compared to avoid
@@ -97,12 +104,12 @@ update_schema(Path, ParseFun) ->
 %% NOTE: it's impossible to automatically update schema definitions added by
 %%       add_schema/2, the only way to update them is to use add_schema/2
 %%       again with the new definition.
--spec update_schema( Path          :: string()
-                   , ParseFun      :: fun((binary()) -> json_term())
-                   , ValidationFun :: fun((any()) -> boolean())
-                   , MakeKeyFun    :: fun((json_term()) -> any())
-                   ) -> jesse_database:update_result().
-update_schema(Path, ParseFun, ValidationFun, MakeKeyFun) ->
+-spec load_schemas( Path          :: string()
+                  , ParseFun      :: fun((binary()) -> json_term())
+                  , ValidationFun :: fun((any()) -> boolean())
+                  , MakeKeyFun    :: fun((json_term()) -> any())
+                  ) -> jesse_database:update_result().
+load_schemas(Path, ParseFun, ValidationFun, MakeKeyFun) ->
   jesse_database:update(Path, ParseFun, ValidationFun, MakeKeyFun).
 
 %% @doc Validates json `Data' against a schema with the same key as `Schema'
@@ -110,7 +117,7 @@ update_schema(Path, ParseFun, ValidationFun, MakeKeyFun) ->
 %% to the caller, otherwise an error with an appropriate error reason
 %% is returned.
 -spec validate(Schema :: any(), Data :: json_term()) -> {ok, json_term()}
-                                                      | {error, term()}.
+                                                      | error().
 validate(Schema, Data) ->
   try
     JsonSchema = jesse_database:read(Schema),
@@ -127,7 +134,7 @@ validate(Schema, Data) ->
               , Data     :: binary()
               , ParseFun :: fun((binary()) -> json_term())
               ) -> {ok, json_term()}
-                 | {error, term()}.
+                 | error().
 validate(Schema, Data, ParseFun) ->
   case try_parse(ParseFun, Data) of
     {parse_error, _} = DError -> {error, {data_error, DError}};
@@ -140,7 +147,7 @@ validate(Schema, Data, ParseFun) ->
 -spec validate_with_schema( Schema :: json_term()
                           , Data   :: json_term()
                           ) -> {ok, json_term()}
-                             | {error, term()}.
+                             | error().
 validate_with_schema(Schema, Data) ->
   try
     jesse_schema_validator:validate(Schema, Data)
@@ -156,7 +163,7 @@ validate_with_schema(Schema, Data) ->
                           , Data     :: binary()
                           , ParseFun :: fun((binary()) -> json_term())
                           ) -> {ok, json_term()}
-                             | {error, term()}.
+                             | error().
 validate_with_schema(Schema, Data, ParseFun) ->
   case try_parse(ParseFun, Schema) of
     {parse_error, _} = SError ->
