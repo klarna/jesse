@@ -29,18 +29,13 @@ clean-docs:
 	rm -f doc/*.png
 	rm -f doc/edoc-info
 
-conf_clean:
-	@:
 # Tests.
 
 deps/jiffy:
 	@$(REBAR) -C rebar.tests.config get-deps
 	cd deps/jiffy && $(REBAR) compile
 
-submodules:
-	git submodule update --init
-
-test: clean deps/jiffy submodules app eunit ct
+test: clean deps/jiffy app eunit ct
 
 eunit:
 	@$(REBAR) -C rebar.tests.config eunit skip_deps=true
@@ -56,4 +51,4 @@ build-plt:
 
 dialyze:
 	@$(DIALYZER) --src src --plt .$(PROJECT).plt --no_native \
-		-Werror_handling -Wrace_conditions
+		-Werror_handling -Wrace_conditions #-Wunmatched_returns -Wunderspecs
