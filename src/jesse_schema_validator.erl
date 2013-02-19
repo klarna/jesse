@@ -252,43 +252,46 @@ check_value(Value, [_Attr | Attrs], JsonSchema) ->
 %% This attribute defines what the primitive type or the schema of the
 %% instance MUST be in order to validate.  This attribute can take one
 %% of two forms:
-%%
-%% Simple Types  A string indicating a primitive or simple type. The
+%% <dl>
+%% <dt>Simple Types</dt>
+%%  <dd>A string indicating a primitive or simple type. The
 %%    following are acceptable string values:
+%%    <dl>
+%%    <dt>string</dt>  <dd>Value MUST be a string.</dd>
 %%
-%%    string  Value MUST be a string.
+%%    <dt>number</dt>  <dd>Value MUST be a number, floating point numbers are
+%%       allowed.</dd>
 %%
-%%    number  Value MUST be a number, floating point numbers are
-%%       allowed.
+%%    <dt>integer</dt>  <dd>Value MUST be an integer, no floating point numbers
+%%       are allowed.  This is a subset of the number type.</dd>
 %%
-%%    integer  Value MUST be an integer, no floating point numbers are
-%%       allowed.  This is a subset of the number type.
+%%    <dt>boolean</dt>  <dd>Value MUST be a boolean.</dd>
 %%
-%%    boolean  Value MUST be a boolean.
+%%    <dt>object</dt>  <dd>Value MUST be an object.</dd>
 %%
-%%    object  Value MUST be an object.
+%%    <dt>array</dt>  <dd>Value MUST be an array.</dd>
 %%
-%%    array  Value MUST be an array.
-%%
-%%    null  Value MUST be null.  Note this is mainly for purpose of
+%%    <dt>null</dt>  <dd>Value MUST be null.  Note this is mainly for purpose of
 %%       being able use union types to define nullability.  If this type
 %%       is not included in a union, null values are not allowed (the
-%%       primitives listed above do not allow nulls on their own).
+%%       primitives listed above do not allow nulls on their own).</dd>
 %%
-%%    any  Value MAY be of any type including null.
+%%    <dt>any</dt>  <dd>Value MAY be of any type including null.</dd>
 %%
 %%    If the property is not defined or is not in this list,
 %%    then any type of value is acceptable.  Other type values MAY be used for
 %%    custom purposes, but minimal validators of the specification
 %%    implementation can allow any instance value on unknown type
 %%    values.
-%%
-%%  Union Types  An array of two or more simple type definitions.  Each
+%%    </dl>
+%%  </dd>
+%% <dt>Union Types</dt>
+%%  <dd>An array of two or more simple type definitions.  Each
 %%     item in the array MUST be a simple type definition or a schema.
 %%     The instance value is valid if it is of the same type as one of
 %%     the simple type definitions, or valid by one of the schemas, in
-%%     the array.
-%%
+%%     the array.</dd>
+%% </dl>
 %%  For example, a schema that defines if an instance can be a string or
 %%  a number would be:
 %%
@@ -407,7 +410,7 @@ check_properties(Value, Properties) ->
 %% 262/Perl 5 format, while the value is a schema.  If the pattern
 %% matches the name of a property on the instance object, the value of
 %% the instance's property MUST be valid against the pattern name's
-%% schema value.'
+%% schema value.
 %% @private
 check_pattern_properties(Value, PatternProperties) ->
   [ check_match({PropertyName, PropertyValue}, {Pattern, Schema})
@@ -498,7 +501,7 @@ filter_extra_names(Pattern, ExtraNames) ->
 %% to the schema in the corresponding position for this array.  This
 %% called tuple typing.  When tuple typing is used, additional items are
 %% allowed, disallowed, or constrained by the "additionalItems"
-%% (Section 5.6) attribute using the same rules as 
+%% (Section 5.6) attribute using the same rules as
 %% "additionalProperties" (Section 5.4) for objects.
 %% @private
 check_items(Value, Items, JsonSchema) when is_list(Items) ->
@@ -547,7 +550,7 @@ check_items(Value, Items, _JsonSchema) ->
                , Value
                ).
 
-%% 5.8.  dependencies
+%% @doc 5.8.  dependencies
 %%
 %% This attribute is an object that defines the requirements of a
 %% property on an instance object.  If an object instance has a property
@@ -556,15 +559,16 @@ check_items(Value, Items, _JsonSchema) ->
 %% (hereafter referred to as the "dependency value").
 %%
 %% The dependency value can take one of two forms:
-%%
-%% Simple Dependency  If the dependency value is a string,
+%% <dl>
+%% <dt>Simple Dependency</dt>  <dd>If the dependency value is a string,
 %%    then the instance object MUST have a property with the same name as the
 %%    dependency value.  If the dependency value is an array of strings,
 %%    then the instance object MUST have a property with the same name
-%%    as each string in the dependency value's array.
+%%    as each string in the dependency value's array.</dd>
 %%
-%% Schema Dependency  If the dependency value is a schema, then the
-%%    instance object MUST be valid against the schema.
+%% <dt>Schema Dependency</dt>  <dd>If the dependency value is a schema, then the
+%%    instance object MUST be valid against the schema.</dd>
+%% </dl>
 %% @private
 check_dependencies(Value, Dependencies) ->
   lists:foreach( fun({DependencyName, DependencyValue}) ->
@@ -688,18 +692,19 @@ check_max_items(Value, MaxItems) ->
 %%
 %% Two instance are consider equal if they are both of the same type
 %% and:
+%% <ul>
+%%   <li>are null; or</li>
 %%
-%%    are null; or
+%%   <li>are booleans/numbers/strings and have the same value; or</li>
 %%
-%%    are booleans/numbers/strings and have the same value; or
+%%   <li>are arrays, contains the same number of items, and each item in
+%%       the array is equal to the corresponding item in the other array;
+%%       or</li>
 %%
-%%    are arrays, contains the same number of items, and each item in
-%%    the array is equal to the corresponding item in the other array;
-%%    or
-%%
-%%    are objects, contains the same property names, and each property
-%%    in the object is equal to the corresponding property in the other
-%%    object.
+%%   <li>are objects, contains the same property names, and each property
+%%       in the object is equal to the corresponding property in the other
+%%       object.</li>
+%% </ul>
 %% @private
 check_unique_items(Value, true = Uniqueitems) ->
   lists:foldl( fun(_Item, []) ->
@@ -864,18 +869,19 @@ check_extends(Value, Extends) ->
 %%
 %% Two instance are consider equal if they are both of the same type
 %% and:
+%% <ul>
+%%   <li>are null; or</li>
 %%
-%%    are null; or
+%%   <li>are booleans/numbers/strings and have the same value; or</li>
 %%
-%%    are booleans/numbers/strings and have the same value; or
+%%   <li>are arrays, contains the same number of items, and each item in
+%%       the array is equal to the corresponding item in the other array;
+%%       or</li>
 %%
-%%    are arrays, contains the same number of items, and each item in
-%%    the array is equal to the corresponding item in the other array;
-%%    or
-%%
-%%    are objects, contains the same property names, and each property
-%%    in the object is equal to the corresponding property in the other
-%%    object.
+%%   <li>are objects, contains the same property names, and each property
+%%       in the object is equal to the corresponding property in the other
+%%       object.</li>
+%% </ul>
 %% @private
 is_equal(Value1, Value2) ->
   case is_json_object(Value1) andalso is_json_object(Value2) of
