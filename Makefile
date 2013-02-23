@@ -35,7 +35,10 @@ deps/jiffy:
 	@$(REBAR) -C rebar.tests.config get-deps
 	cd deps/jiffy && $(REBAR) compile
 
-test: clean deps/jiffy app eunit ct
+submodules:
+	git submodule update --init
+
+test: clean deps/jiffy submodules app eunit ct
 
 eunit:
 	@$(REBAR) -C rebar.tests.config eunit skip_deps=true
