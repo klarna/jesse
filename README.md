@@ -24,9 +24,9 @@ There are two ways of using jesse:
 Examples
 --------
 
-    NOTE: jesse doesn't have any parsing functionality, it works with either mochijson2
-          format or EEP18 format, so json needs to be parsed in advance, or you can
-          specify a callback which jesse will use to parse json.
+    NOTE: jesse doesn't have any parsing functionality. It currently works with three
+          formats: mochijson2, jiffy and jsx, so json needs to be parsed in advance,
+          or you can specify a callback which jesse will use to parse json.
 
           In examples below and in jesse test suite jiffy parser is used.
 

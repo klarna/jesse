@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+0.3.0
+-----
+
+*   Add support for jsx format
+
 0.2.0
 -----
 

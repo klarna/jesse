@@ -91,12 +91,18 @@ get_schema_id(Schema) ->
 
 %% @doc A naive check if the given data is a json object.
 %% Supports two main formats of json representation:
-%% 1) mochijson format (`{struct, proplist()}')
-%% 2) EEP18 format (`{proplist()}')
+%% 1) mochijson2 format (`{struct, proplist()}')
+%% 2) jiffy format (`{proplist()}')
+%% 3) jsx format (`[{binary() | atom(), any()}]')
 %% Returns `true' if the given data is an object, otherwise `false' is returned.
 -spec is_json_object(any()) -> boolean().
 is_json_object({struct, Value}) when is_list(Value) -> true;
 is_json_object({Value}) when is_list(Value)         -> true;
+%% handle `jsx' empty objects
+is_json_object([{}])                                -> true;
+%% very naive check. checks only the first element.
+is_json_object([{Key, _Value} | _])
+  when is_binary(Key) orelse is_atom(Key)           -> true;
 is_json_object(_)                                   -> false.
 
 %%% Internal functions
@@ -134,7 +140,7 @@ check_value( Value
   end,
   check_value(Value, Attrs, JsonSchema);
 check_value(Value, [{?ITEMS, Items} | Attrs], JsonSchema) ->
-  case is_list(Value) of
+  case is_array(Value) of
     true  -> check_items(Value, Items, JsonSchema);
     false -> ok
   end,
@@ -189,19 +195,19 @@ check_value( Value
            ) ->
   check_value(Value, Attrs, JsonSchema);
 check_value(Value, [{?MINITEMS, MinItems} | Attrs], JsonSchema) ->
-  case is_list(Value) of
+  case is_array(Value) of
     true  -> check_min_items(Value, MinItems);
     false -> ok
   end,
   check_value(Value, Attrs, JsonSchema);
 check_value(Value, [{?MAXITEMS, MaxItems} | Attrs], JsonSchema) ->
-  case is_list(Value) of
+  case is_array(Value) of
     true  -> check_max_items(Value, MaxItems);
     false -> ok
   end,
   check_value(Value, Attrs, JsonSchema);
 check_value(Value, [{?UNIQUEITEMS, Uniqueitems} | Attrs], JsonSchema) ->
-  case is_list(Value) of
+  case is_array(Value) of
     true  -> check_unique_items(Value, Uniqueitems);
     false -> ok
   end,
@@ -323,7 +329,7 @@ check_type(Value, ?OBJECT, JsonSchema) ->
     false -> throw({data_invalid, Value, not_object, JsonSchema})
   end;
 check_type(Value, ?ARRAY, JsonSchema) ->
-  case is_list(Value) of
+  case is_array(Value) of
     true  -> ok;
     false -> throw({data_invalid, Value, not_array, JsonSchema})
   end;
@@ -334,7 +340,14 @@ check_type(Value, ?NULL, JsonSchema) ->
   end;
 check_type(_Value, ?ANY, _JsonSchema) ->
   ok;
-check_type(Value, UnionType, JsonSchema) when is_list(UnionType) ->
+check_type(Value, UnionType, JsonSchema) ->
+  case is_array(UnionType) of
+    true  -> check_union_type(Value, UnionType, JsonSchema);
+    false -> ok
+  end.
+
+%% @private
+check_union_type(Value, UnionType, JsonSchema) ->
   IsValid = lists:any( fun(Type) ->
                            try
                              case is_json_object(Type) of
@@ -359,9 +372,7 @@ check_type(Value, UnionType, JsonSchema) when is_list(UnionType) ->
   case IsValid of
     true  -> ok;
     false -> throw({data_invalid, Value, not_correct_type, JsonSchema})
-  end;
-check_type(_Value, _Type, _JsonSchema) ->
-  ok.
+  end.
 
 %% @doc 5.2.  properties
 %%
@@ -504,7 +515,26 @@ filter_extra_names(Pattern, ExtraNames) ->
 %% (Section 5.6) attribute using the same rules as
 %% "additionalProperties" (Section 5.4) for objects.
 %% @private
-check_items(Value, Items, JsonSchema) when is_list(Items) ->
+check_items(Value, Items, JsonSchema) ->
+  case is_json_object(Items) of
+    true  ->
+      lists:foreach( fun(Item) ->
+                         check_value(Item, unwrap(Items), Items)
+                     end
+                   , Value
+                   );
+    false ->
+      case is_list(Items) of
+        true  -> check_items_array(Value, Items, JsonSchema);
+        false -> throw({ schema_invalid
+                       , Items
+                       , wrong_type_items
+                       })
+      end
+  end.
+
+%% @private
+check_items_array(Value, Items, JsonSchema) ->
   Tuples = case length(Value) - length(Items) of
              0 ->
                lists:zip(Value, Items);
@@ -542,12 +572,6 @@ check_items(Value, Items, JsonSchema) when is_list(Items) ->
                      check_value(Item, unwrap(Schema), Schema)
                  end
                , Tuples
-               );
-check_items(Value, Items, _JsonSchema) ->
-  lists:foreach( fun(Item) ->
-                     check_value(Item, unwrap(Items), Items)
-                 end
-               , Value
                ).
 
 %% @doc 5.8.  dependencies
@@ -581,12 +605,6 @@ check_dependencies(Value, Dependencies) ->
                ).
 
 %% @private
-check_dependency_value(Value, Dependency) when is_list(Dependency) ->
-  lists:foreach( fun(PropertyName) ->
-                     check_dependency_value(Value, PropertyName)
-                 end
-               , Dependency
-               );
 check_dependency_value(Value, Dependency) when is_binary(Dependency) ->
   case get_path(Dependency, Value) of
     [] -> throw({ data_invalid
@@ -599,11 +617,23 @@ check_dependency_value(Value, Dependency) when is_binary(Dependency) ->
 check_dependency_value(Value, Dependency) ->
   case is_json_object(Dependency) of
     true  -> check_value(Value, unwrap(Dependency), Dependency);
-    false -> throw({ schema_invalid
-                   , Dependency
-                   , wrong_type_dependency
-                   })
+    false ->
+      case is_list(Dependency) of
+        true  -> check_dependency_array(Value, Dependency);
+        false -> throw({ schema_invalid
+                       , Dependency
+                       , wrong_type_dependency
+                       })
+      end
   end.
+
+%% @private
+check_dependency_array(Value, Dependency) ->
+  lists:foreach( fun(PropertyName) ->
+                     check_dependency_value(Value, PropertyName)
+                 end
+               , Dependency
+               ).
 
 %% @doc 5.9.  minimum
 %%
@@ -848,20 +878,24 @@ check_disallow(Value, Disallow, JsonSchema) ->
 %% another schema MAY define additional attributes, constrain existing
 %% attributes, or add other constraints.
 %% @private
-check_extends(Value, Extends) when is_list(Extends) ->
-  lists:foreach( fun(SchemaKey) ->
-                     check_extends(Value, SchemaKey)
-                 end
-               , Extends
-               );
 check_extends(Value, Extends) ->
   case is_json_object(Extends) of
     true  ->
       check_value(Value, unwrap(Extends), Extends);
     false ->
-      %% TODO: implement handling of $ref
-      ok
+      case is_list(Extends) of
+        true  -> check_extends_array(Value, Extends);
+        false -> ok %% TODO: implement handling of $ref
+      end
   end.
+
+%% @private
+check_extends_array(Value, Extends) ->
+  lists:foreach( fun(SchemaKey) ->
+                     check_extends(Value, SchemaKey)
+                 end
+               , Extends
+               ).
 
 %%=============================================================================
 %% @doc Returns `true' if given values (instance) are equal, otherwise `false'
@@ -933,6 +967,13 @@ get_path(Key, Schema) ->
 %% @private
 unwrap(Value) ->
   jesse_json_path:unwrap_value(Value).
+
+%%=============================================================================
+%% @doc This check is needed since objects in `jsx' are lists (proplists)
+%% @private
+is_array(Value) when is_list(Value) -> not is_json_object(Value);
+is_array(_)                         -> false.
+
 
 %%% Local Variables:
 %%% erlang-indent-level: 2
