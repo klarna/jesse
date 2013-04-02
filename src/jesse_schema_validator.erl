@@ -102,7 +102,8 @@ is_json_object({Value}) when is_list(Value)         -> true;
 is_json_object([{}])                                -> true;
 %% very naive check. checks only the first element.
 is_json_object([{Key, _Value} | _])
-  when is_binary(Key) orelse is_atom(Key)           -> true;
+  when is_binary(Key) orelse is_atom(Key)
+       andalso Key =/= struct                       -> true;
 is_json_object(_)                                   -> false.
 
 %%% Internal functions
