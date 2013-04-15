@@ -86,31 +86,31 @@ path_plist_test() ->
       fun (F) ->
               ?assertEqual(
                  baz,
-                 jesse_json_path:path(foo.bar, F([{foo, [{bar, baz}]}]))),
+                 jesse_json_path:path('foo.bar', F([{foo, [{bar, baz}]}]))),
               ?assertEqual(
                  [],
-                 jesse_json_path:path(foo.bar, F([{foo, [{baz, baz}]}]))),
+                 jesse_json_path:path('foo.bar', F([{foo, [{baz, baz}]}]))),
               ?assertEqual(
                  [],
-                 jesse_json_path:path(foo.bar, F([{not_foo, ok}]))),
+                 jesse_json_path:path('foo.bar', F([{not_foo, ok}]))),
               ?assertEqual(
                  [],
-                 jesse_json_path:path(foo.bar, F([])))
+                 jesse_json_path:path('foo.bar', F([])))
       end,
       [fun gb_trees:from_orddict/1, fun dict:from_list/1]),
     ?assertEqual(
        wibble,
-       jesse_json_path:path(foo.bar.baz, [{foo, [{bar, [{baz, wibble}]}]}])),
+       jesse_json_path:path('foo.bar.baz', [{foo, [{bar, [{baz, wibble}]}]}])),
     ?assertEqual(
        [],
-       jesse_json_path:path(foo.bar.baz.invalid_proplist,
+       jesse_json_path:path('foo.bar.baz.invalid_proplist',
                             [{foo, [{bar, [{baz, wibble}]}]}])),
     ?assertEqual(
        [],
-       jesse_json_path:path(foo.bar.baz, [{foo, [{bar, [{bar, wibble}]}]}])),
+       jesse_json_path:path('foo.bar.baz', [{foo, [{bar, [{bar, wibble}]}]}])),
     ?assertEqual(
        <<"wibble">>,
-       jesse_json_path:path(foo.bar.baz,
+       jesse_json_path:path('foo.bar.baz',
                             {struct,
                              [{<<"foo">>,
                                {struct,
@@ -118,13 +118,13 @@ path_plist_test() ->
                                   {struct, [{<<"baz">>, <<"wibble">>}]}}]}}]})),
     ?assertEqual(
        <<"wibble">>,
-       jesse_json_path:path(foo.bar.baz,
+       jesse_json_path:path('foo.bar.baz',
                             {[{<<"foo">>,
                                {[{<<"bar">>,
                                   {[{<<"baz">>, <<"wibble">>}]}}]}}]})),
     ?assertEqual(
        "wibble",
-       jesse_json_path:path(foo.bar.baz,
+       jesse_json_path:path('foo.bar.baz',
                             {struct,
                              [{"foo",
                                {struct,
