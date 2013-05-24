@@ -26,7 +26,7 @@
 -module(jesse_schema_validator).
 
 %% API
--export([ validate/2
+-export([ validate/3
         , get_schema_id/1
         , is_json_object/1
         ]).
@@ -72,12 +72,17 @@
 %% @doc Validates json `Data' against `Schema'. If the given json is valid,
 %% then it is returned to the caller as is, otherwise an exception
 %% will be thrown.
--spec validate( JsonSchema :: jesse:json_term()
-              , Data       :: jesse:json_term()
+-spec validate( JsonSchema  :: jesse:json_term()
+              , Data        :: jesse:json_term()
+              , AccTuple    :: {jesse:accumulator(), Initial :: term()}
               ) -> {ok, jesse:json_term()}
+                 | {partial, jesse:json_term(), term()}
                  | no_return().
-validate(JsonSchema, Value) ->
-  {check_value(Value, unwrap(JsonSchema), JsonSchema), Value}.
+validate(JsonSchema, Value, AccTuple) ->
+    case check_value(Value, unwrap(JsonSchema), JsonSchema, {ok, AccTuple}) of
+        {ok, _}                 -> {ok, Value};
+        {error, {_Fun, Errors}} -> {error, Errors}
+    end.
 
 %% @doc Returns value of "id" field from json object `Schema', assuming that
 %% the given json object has such a field, otherwise an exception
@@ -110,149 +115,208 @@ is_json_object(_)                                   -> false.
 %% @doc Goes through attributes of the given schema `JsonSchema' and
 %% validates the value `Value' against them.
 %% @private
-check_value(Value, [{?TYPE, Type} | Attrs], JsonSchema) ->
-  check_type(Value, Type, JsonSchema),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?PROPERTIES, Properties} | Attrs], JsonSchema) ->
-  case is_json_object(Value) of
-    true  -> check_properties(Value, unwrap(Properties));
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?TYPE, Type} | Attrs], JsonSchema, Accumulator) ->
+  case check_type(Value, Type, JsonSchema) of
+      ok -> check_value(Value, Attrs, JsonSchema, Accumulator);
+      %% In case of incorrect type, not other properties are checked against
+      %% this value, since it may not be safe
+      Error -> accumulate_error(Error, Accumulator)
+  end;
+check_value( Value
+           , [{?PROPERTIES, Properties} | Attrs]
+           , JsonSchema
+           , Accumulator0
+           ) ->
+    Accumulator1 =
+        case is_json_object(Value) of
+            true  -> check_properties(Value, unwrap(Properties), Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
 check_value( Value
            , [{?PATTERNPROPERTIES, PatternProperties} | Attrs]
            , JsonSchema
+           , Accumulator0
            ) ->
-  case is_json_object(Value) of
-    true  -> check_pattern_properties(Value, PatternProperties);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+    Accumulator1 =
+        case is_json_object(Value) of
+            true  -> check_pattern_properties(Value, PatternProperties,
+                                              Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
 check_value( Value
            , [{?ADDITIONALPROPERTIES, AdditionalProperties} | Attrs]
            , JsonSchema
+           , Accumulator0
            ) ->
-  case is_json_object(Value) of
-    true  -> check_additional_properties( Value
-                                        , AdditionalProperties
-                                        , JsonSchema
-                                        );
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?ITEMS, Items} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_items(Value, Items, JsonSchema);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+    Accumulator1 =
+        case is_json_object(Value) of
+            true  -> check_additional_properties(Value, AdditionalProperties,
+                                                 JsonSchema, Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?ITEMS, Items} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 =
+        case is_array(Value) of
+            true  -> check_items(Value, Items, JsonSchema, Accumulator0);
+            false -> ok
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
 check_value( Value
            , [{?ADDITIONALITEMS, _AdditionalItems} | Attrs]
            , JsonSchema
+           , Accumulator
            ) ->
-  check_value(Value, Attrs, JsonSchema);
+    check_value(Value, Attrs, JsonSchema, Accumulator);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
-check_value(Value, [{?REQUIRED, _Required} | Attrs], JsonSchema) ->
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?DEPENDENCIES, Dependencies} | Attrs], JsonSchema) ->
-  case is_json_object(Value) of
-    true  -> check_dependencies(Value, Dependencies);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MINIMUM, Minimum} | Attrs], JsonSchema) ->
-  case is_number(Value) of
-    true  ->
-      ExclusiveMinimum = get_path(?EXCLUSIVEMINIMUM, JsonSchema),
-      check_minimum(Value, Minimum, ExclusiveMinimum);
-    false ->
-      ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MAXIMUM, Maximum} | Attrs], JsonSchema) ->
-  case is_number(Value) of
-    true  ->
-      ExclusiveMaximum = get_path(?EXCLUSIVEMAXIMUM, JsonSchema),
-      check_maximum(Value, Maximum, ExclusiveMaximum);
-    false ->
-      ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?REQUIRED, _Required} | Attrs], JsonSchema, Accumulator) ->
+    check_value(Value, Attrs, JsonSchema, Accumulator);
+check_value( Value
+           , [{?DEPENDENCIES, Dependencies} | Attrs]
+           , JsonSchema
+           , Accumulator0
+           ) ->
+    Accumulator1 =
+        case is_json_object(Value) of
+            true -> check_dependencies(Value, Dependencies, Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?MINIMUM, Minimum} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 =
+        case is_number(Value) of
+            true ->
+                ExclusiveMinimum = get_path(?EXCLUSIVEMINIMUM, JsonSchema),
+                accumulate_error(check_minimum(Value, Minimum, ExclusiveMinimum),
+                                 Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?MAXIMUM, Maximum} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 =
+        case is_number(Value) of
+            true ->
+                ExclusiveMaximum = get_path(?EXCLUSIVEMAXIMUM, JsonSchema),
+                accumulate_error(check_maximum(Value, Maximum, ExclusiveMaximum),
+                                 Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
 check_value( Value
            , [{?EXCLUSIVEMINIMUM, _ExclusiveMinimum} | Attrs]
            , JsonSchema
+           , Accumulator
            ) ->
-  check_value(Value, Attrs, JsonSchema);
+    check_value(Value, Attrs, JsonSchema, Accumulator);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
 check_value( Value
            , [{?EXCLUSIVEMAXIMUM, _ExclusiveMaximum} | Attrs]
            , JsonSchema
+           , Accumulator
            ) ->
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MINITEMS, MinItems} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_min_items(Value, MinItems);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MAXITEMS, MaxItems} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_max_items(Value, MaxItems);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?UNIQUEITEMS, Uniqueitems} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_unique_items(Value, Uniqueitems);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?PATTERN, Pattern} | Attrs], JsonSchema) ->
-  case is_binary(Value) of
-    true  -> check_pattern(Value, Pattern);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MINLENGTH, MinLength} | Attrs], JsonSchema) ->
-  case is_binary(Value) of
-    true  -> check_min_length(Value, MinLength);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MAXLENGTH, MaxLength} | Attrs], JsonSchema) ->
-  case is_binary(Value) of
-    true  -> check_max_length(Value, MaxLength);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?ENUM, Enum} | Attrs], JsonSchema) ->
-  check_enum(Value, Enum),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?FORMAT, Format} | Attrs], JsonSchema) ->
-  check_format(Value, Format),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?DIVISIBLEBY, DivisibleBy} | Attrs], JsonSchema) ->
-  case is_number(Value) of
-    true  -> check_divisible_by(Value, DivisibleBy, JsonSchema);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?DISALLOW, Disallow} | Attrs], JsonSchema) ->
-  check_disallow(Value, Disallow, JsonSchema),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?EXTENDS, Extends} | Attrs], JsonSchema) ->
-  check_extends(Value, Extends),
-  check_value(Value, Attrs, JsonSchema);
-check_value(_Value, [], _JsonSchema) ->
-  ok;
-check_value(Value, [_Attr | Attrs], JsonSchema) ->
-  check_value(Value, Attrs, JsonSchema).
+    check_value(Value, Attrs, JsonSchema, Accumulator);
+check_value(Value, [{?MINITEMS, MinItems} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 =
+        case is_array(Value) of
+            true -> accumulate_error(check_min_items(Value, MinItems),
+                                     Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?MAXITEMS, MaxItems} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 =
+        case is_array(Value) of
+            true -> accumulate_error(check_max_items(Value, MaxItems),
+                                     Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value( Value
+           , [{?UNIQUEITEMS, Uniqueitems} | Attrs]
+           , JsonSchema
+           , Accumulator0
+           ) ->
+    Accumulator1 =
+        case is_array(Value) of
+            true -> accumulate_error(check_unique_items(Value, Uniqueitems),
+                                     Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?PATTERN, Pattern} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 =
+        case is_binary(Value) of
+            true -> accumulate_error(check_pattern(Value, Pattern),
+                                     Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value( Value
+           , [{?MINLENGTH, MinLength} | Attrs]
+           , JsonSchema
+           , Accumulator0
+           ) ->
+    Accumulator1 =
+        case is_binary(Value) of
+            true -> accumulate_error(check_min_length(Value, MinLength),
+                                     Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value( Value
+           , [{?MAXLENGTH, MaxLength} | Attrs]
+           , JsonSchema
+           , Accumulator0
+           ) ->
+    Accumulator1 =
+        case is_binary(Value) of
+            true -> accumulate_error(check_max_length(Value, MaxLength),
+                                     Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?ENUM, Enum} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 = accumulate_error(check_enum(Value, Enum), Accumulator0),
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?FORMAT, Format} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 = accumulate_error(check_format(Value, Format), Accumulator0),
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value( Value
+           , [{?DIVISIBLEBY, DivisibleBy} | Attrs]
+           , JsonSchema
+           , Accumulator0
+           ) ->
+    Accumulator1 =
+        case is_number(Value) of
+            true  -> accumulate_error(check_divisible_by(Value, DivisibleBy,
+                                                         JsonSchema),
+                                      Accumulator0);
+            false -> Accumulator0
+        end,
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value( Value
+           , [{?DISALLOW, Disallow} | Attrs]
+           , JsonSchema
+           , Accumulator0
+           ) ->
+    Accumulator1 = accumulate_error(check_disallow(Value, Disallow, JsonSchema),
+                                    Accumulator0),
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(Value, [{?EXTENDS, Extends} | Attrs], JsonSchema, Accumulator0) ->
+    Accumulator1 = check_extends(Value, Extends, Accumulator0),
+    check_value(Value, Attrs, JsonSchema, Accumulator1);
+check_value(_Value, [], _JsonSchema, Accumulator) ->
+    Accumulator;
+check_value(Value, [_Attr | Attrs], JsonSchema, Accumulator) ->
+    check_value(Value, Attrs, JsonSchema, Accumulator).
 
 %% @doc 5.1.  type
 %%
@@ -307,37 +371,37 @@ check_value(Value, [_Attr | Attrs], JsonSchema) ->
 check_type(Value, ?STRING, JsonSchema) ->
   case is_binary(Value) of
     true  -> ok;
-    false -> throw({data_invalid, Value, not_string, JsonSchema})
+    false -> {data_invalid, Value, not_string, JsonSchema}
   end;
 check_type(Value, ?NUMBER, JsonSchema) ->
   case is_number(Value) of
     true  -> ok;
-    false -> throw({data_invalid, Value, not_number, JsonSchema})
+    false -> {data_invalid, Value, not_number, JsonSchema}
   end;
 check_type(Value, ?INTEGER, JsonSchema) ->
   case is_integer(Value) of
     true  -> ok;
-    false -> throw({data_invalid, Value, not_integer, JsonSchema})
+    false -> {data_invalid, Value, not_integer, JsonSchema}
   end;
 check_type(Value, ?BOOLEAN, JsonSchema) ->
   case is_boolean(Value) of
     true  -> ok;
-    false -> throw({data_invalid, Value, not_boolean, JsonSchema})
+    false -> {data_invalid, Value, not_boolean, JsonSchema}
   end;
 check_type(Value, ?OBJECT, JsonSchema) ->
   case is_json_object(Value) of
     true  -> ok;
-    false -> throw({data_invalid, Value, not_object, JsonSchema})
+    false -> {data_invalid, Value, not_object, JsonSchema}
   end;
 check_type(Value, ?ARRAY, JsonSchema) ->
   case is_array(Value) of
     true  -> ok;
-    false -> throw({data_invalid, Value, not_array, JsonSchema})
+    false -> {data_invalid, Value, not_array, JsonSchema}
   end;
 check_type(Value, ?NULL, JsonSchema) ->
   case Value of
     null -> ok;
-    _    -> throw({data_invalid, Value, not_null, JsonSchema})
+    _    -> {data_invalid, Value, not_null, JsonSchema}
   end;
 check_type(_Value, ?ANY, _JsonSchema) ->
   ok;
@@ -349,31 +413,23 @@ check_type(Value, UnionType, JsonSchema) ->
 
 %% @private
 check_union_type(Value, UnionType, JsonSchema) ->
-  IsValid = lists:any( fun(Type) ->
-                           try
-                             case is_json_object(Type) of
-                               true ->
-                                 %% case when there's a schema in the array,
-                                 %% then we need to validate against
-                                 %% that schema
-                                 ok =:= check_value( Value
-                                                   , unwrap(Type)
-                                                   , Type
-                                                   );
-                               false ->
-                                 ok =:= check_type(Value, Type, JsonSchema)
-                             end
-                           catch
-                             throw:{data_invalid, _, _, _} -> false;
-                             throw:{schema_invalid, _, _}  -> false
-                           end
-                       end
-                     , UnionType
-                     ),
-  case IsValid of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_correct_type, JsonSchema})
-  end.
+    Predicate =
+        fun(Type) ->
+                case is_json_object(Type) of
+                    true ->
+                        %% case when there's a schema in the array,
+                        %% then we need to validate against
+                        %% that schema
+                        Acc = {ok, {fun dummy_accumulator/2, undefined}},
+                        Acc =:= check_value(Value, unwrap(Type), Type, Acc);
+                    false ->
+                        ok =:= check_type(Value, Type, JsonSchema)
+                end
+        end,
+    case lists:any(Predicate, UnionType) of
+        true -> ok;
+        false -> {data_invalid, Value, not_correct_type, JsonSchema}
+    end.
 
 %% @doc 5.2.  properties
 %%
@@ -387,32 +443,32 @@ check_union_type(Value, UnionType, JsonSchema) ->
 %% the property definition.  Properties are considered unordered, the
 %% order of the instance properties MAY be in any order.
 %% @private
-check_properties(Value, Properties) ->
-  lists:foreach( fun({PropertyName, PropertySchema}) ->
-                     case get_path(PropertyName, Value) of
-                       [] ->
-%% @doc 5.7.  required
-%%
-%% This attribute indicates if the instance must have a value, and not
-%% be undefined.  This is false by default, making the instance
-%% optional.
-%% @end
-                         case get_path(?REQUIRED, PropertySchema) of
-                           true  -> throw({ data_invalid
-                                          , Value
-                                          , missing_required_property
-                                          , PropertyName
-                                          });
-                           _     -> ok
-                         end;
-                       Property -> check_value( Property
-                                               , unwrap(PropertySchema)
-                                               , PropertySchema
-                                               )
-                     end
-                 end
-               , Properties
-               ).
+check_properties(Value, Properties, Accumulator) ->
+    FoldFun =
+        fun({PropertyName, PropertySchema}, Acc0) ->
+            case get_path(PropertyName, Value) of
+                [] ->
+                    %% @doc 5.7.  required
+                    %%
+                    %% This attribute indicates if the instance must have a
+                    %% value, and not be undefined. This is false by default,
+                    %% making the instance optional.
+                    %% @end
+                    case get_path(?REQUIRED, PropertySchema) of
+                        true ->
+                            Err = { data_invalid, Value,
+                                    missing_required_property, PropertyName },
+                            accumulate_error(Err, Acc0);
+
+                        _ -> Acc0
+                    end;
+
+                Property ->
+                    check_value(Property, unwrap(PropertySchema),
+                                PropertySchema, Acc0)
+            end
+        end,
+    lists:foldl(FoldFun, Accumulator, Properties).
 
 %% @doc 5.3.  patternProperties
 %%
@@ -424,18 +480,28 @@ check_properties(Value, Properties) ->
 %% the instance's property MUST be valid against the pattern name's
 %% schema value.
 %% @private
-check_pattern_properties(Value, PatternProperties) ->
-  [ check_match({PropertyName, PropertyValue}, {Pattern, Schema})
-   || {Pattern, Schema} <- unwrap(PatternProperties),
-      {PropertyName, PropertyValue} <- unwrap(Value)],
-  ok.
+check_pattern_properties(Value, PatternProperties, Accumulator) ->
+    lists:foldl(
+        fun (Pattern, Accumulator0) ->
+            lists:foldl(
+                fun(Property, Accumulator1) ->
+                    check_match(Property, Pattern, Accumulator1)
+                end,
+                Accumulator0,
+                unwrap(Value)
+            )
+        end,
+        Accumulator,
+        unwrap(PatternProperties)
+    ).
 
 %% @private
-check_match({PropertyName, PropertyValue}, {Pattern, Schema}) ->
-  case re:run(PropertyName, Pattern, [{capture, none}]) of
-    match   -> check_value(PropertyValue, unwrap(Schema), Schema);
-    nomatch -> ok
-  end.
+check_match({PropertyName, PropertyValue}, {Pattern, Schema}, Accumulator) ->
+    case re:run(PropertyName, Pattern, [{capture, none}]) of
+        match ->
+            check_value(PropertyValue, unwrap(Schema), Schema, Accumulator);
+        nomatch -> Accumulator
+    end.
 
 %% @doc 5.4.  additionalProperties
 %%
@@ -446,33 +512,38 @@ check_match({PropertyName, PropertyValue}, {Pattern, Schema}) ->
 %% the schema.  The default value is an empty schema which allows any
 %% value for additional properties.
 %% @private
-check_additional_properties(Value, false, JsonSchema) ->
-  Properties        = get_path(?PROPERTIES, JsonSchema),
-  PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
-  case get_additional_properties(Value, Properties, PatternProperties) of
-    []      -> ok;
-    _Extras -> throw({ data_invalid
-                     , {Value, _Extras}
-                     , no_extra_properties_allowed
-                     , JsonSchema
-                     })
-  end;
-check_additional_properties(_Value, true, _JsonSchema) ->
-  ok;
-check_additional_properties(Value, AdditionalProperties, JsonSchema) ->
-  Properties        = get_path(?PROPERTIES, JsonSchema),
-  PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
-  case get_additional_properties(Value, Properties, PatternProperties) of
-    []     -> ok;
-    Extras -> lists:foreach( fun(Extra) ->
-                                 check_value( Extra
-                                            , unwrap(AdditionalProperties)
-                                            , AdditionalProperties
-                                            )
-                             end
-                           , Extras
-                           )
-  end.
+check_additional_properties(Value, false, JsonSchema, Accumulator) ->
+    Properties        = get_path(?PROPERTIES, JsonSchema),
+    PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
+    case get_additional_properties(Value, Properties, PatternProperties) of
+        []      -> Accumulator;
+        _Extras -> accumulate_error({data_invalid, {Value, _Extras},
+                                     no_extra_properties_allowed, JsonSchema},
+                                    Accumulator)
+    end;
+check_additional_properties(_Value, true, _JsonSchema, Accumulator) ->
+    Accumulator;
+check_additional_properties( Value
+                           , AdditionalProperties
+                           , JsonSchema
+                           , Accumulator
+                           ) ->
+    Properties        = get_path(?PROPERTIES, JsonSchema),
+    PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
+    case get_additional_properties(Value, Properties, PatternProperties) of
+        []     -> Accumulator;
+        Extras ->
+            lists:foldl(
+                fun(Extra, Accumulator0) ->
+                    check_value( Extra
+                               , unwrap(AdditionalProperties)
+                               , AdditionalProperties
+                               , Accumulator0 )
+                end,
+                Accumulator,
+                Extras
+            )
+    end.
 
 %% @private
 get_additional_properties(Value, Properties, PatternProperties) ->
@@ -516,64 +587,66 @@ filter_extra_names(Pattern, ExtraNames) ->
 %% (Section 5.6) attribute using the same rules as
 %% "additionalProperties" (Section 5.4) for objects.
 %% @private
-check_items(Value, Items, JsonSchema) ->
-  case is_json_object(Items) of
-    true  ->
-      lists:foreach( fun(Item) ->
-                         check_value(Item, unwrap(Items), Items)
-                     end
-                   , Value
-                   );
-    false ->
-      case is_list(Items) of
-        true  -> check_items_array(Value, Items, JsonSchema);
-        false -> throw({ schema_invalid
-                       , Items
-                       , wrong_type_items
-                       })
-      end
-  end.
+check_items(Value, Items, JsonSchema, Accumulator) ->
+    case is_json_object(Items) of
+        true  ->
+            lists:foldl(
+                fun(Item, Acc0) ->
+                    check_value(Item, unwrap(Items), Items, Acc0)
+                end,
+                Accumulator,
+                Value
+            );
+
+        false when is_list(Items) ->
+            check_items_array(Value, Items, JsonSchema, Accumulator);
+
+        _ -> accumulate_error({schema_invalid, Items, wrong_type_items},
+                              Accumulator)
+    end.
 
 %% @private
-check_items_array(Value, Items, JsonSchema) ->
-  Tuples = case length(Value) - length(Items) of
-             0 ->
-               lists:zip(Value, Items);
-             NExtra when NExtra > 0 ->
-%% @doc 5.6.  additionalItems
-%%
-%% This provides a definition for additional items in an array instance
-%% when tuple definitions of the items is provided.  This can be false
-%% to indicate additional items in the array are not allowed, or it can
-%% be a schema that defines the schema of the additional items.
-%% @end
-               case get_path(?ADDITIONALITEMS, JsonSchema) of
-                 [] ->
-                   [];
-                 true ->
-                   [];
-                 false ->
-                   throw({ data_invalid
-                         , Value
-                         , no_extra_items_allowed
-                         , JsonSchema
-                         });
-                 AdditionalItems ->
-                   ExtraSchemas = lists:duplicate(NExtra, AdditionalItems),
-                   lists:zip(Value, lists:append(Items, ExtraSchemas))
-               end;
-             NExtra when NExtra < 0 ->
-               throw({ data_invalid
-                     , Value
-                     , not_enought_items
-                     , JsonSchema
-                     })
-           end,
-  lists:foreach( fun({Item, Schema}) ->
-                     check_value(Item, unwrap(Schema), Schema)
-                 end
-               , Tuples
-               ).
+check_items_array(Value, Items, JsonSchema, Accumulator) ->
+    CheckItemsFun =
+        fun (Tuples) ->
+            lists:foldl(
+                fun({Item, Schema}, Acc0) ->
+                    check_value(Item, unwrap(Schema), Schema, Acc0)
+                end,
+                Accumulator,
+                Tuples
+            )
+        end,
+
+    %% @doc 5.6.  additionalItems
+    %%
+    %% This provides a definition for additional items in an array instance
+    %% when tuple definitions of the items is provided.  This can be false
+    %% to indicate additional items in the array are not allowed, or it can
+    %% be a schema that defines the schema of the additional items.
+    %% @end
+    case length(Value) - length(Items) of
+        0 ->
+            CheckItemsFun(lists:zip(Value, Items));
+        NExtra when NExtra > 0 ->
+            case get_path(?ADDITIONALITEMS, JsonSchema) of
+                []      -> Accumulator;
+                true    -> Accumulator;
+                false   ->
+                    accumulate_error({data_invalid, Value,
+                                      no_extra_items_allowed, JsonSchema},
+                                     Accumulator);
+                AdditionalItems ->
+                    ExtraSchemas = lists:duplicate(NExtra, AdditionalItems),
+                    CheckItemsFun(
+                        lists:zip(Value, lists:append(Items, ExtraSchemas))
+                    )
+            end;
+        NExtra when NExtra < 0 ->
+            accumulate_error({data_invalid, Value,
+                              not_enought_items, JsonSchema},
+                             Accumulator)
+    end.
 
 %% @doc 5.8.  dependencies
 %%
@@ -595,46 +668,48 @@ check_items_array(Value, Items, JsonSchema) ->
 %%    instance object MUST be valid against the schema.</dd>
 %% </dl>
 %% @private
-check_dependencies(Value, Dependencies) ->
-  lists:foreach( fun({DependencyName, DependencyValue}) ->
-                     case get_path(DependencyName, Value) of
-                       [] -> ok;
-                       _  -> check_dependency_value(Value, DependencyValue)
-                     end
-                 end
-               , unwrap(Dependencies)
-               ).
+check_dependencies(Value, Dependencies, Accumulator) ->
+    lists:foldl(
+        fun({DependencyName, DependencyValue}, Acc0) ->
+            case get_path(DependencyName, Value) of
+                [] -> Acc0;
+                _  -> check_dependency_value(Value, DependencyValue, Acc0)
+            end
+        end,
+        Accumulator,
+        unwrap(Dependencies)
+    ).
 
 %% @private
-check_dependency_value(Value, Dependency) when is_binary(Dependency) ->
-  case get_path(Dependency, Value) of
-    [] -> throw({ data_invalid
-                , Value
-                , missing_dependency
-                , Dependency
-                });
-    _  -> ok
-  end;
-check_dependency_value(Value, Dependency) ->
-  case is_json_object(Dependency) of
-    true  -> check_value(Value, unwrap(Dependency), Dependency);
-    false ->
-      case is_list(Dependency) of
-        true  -> check_dependency_array(Value, Dependency);
-        false -> throw({ schema_invalid
-                       , Dependency
-                       , wrong_type_dependency
-                       })
-      end
-  end.
+check_dependency_value(Value, Dependency, Accumulator)
+when is_binary(Dependency) ->
+    case get_path(Dependency, Value) of
+        [] -> accumulate_error( { data_invalid, Value,
+                                  missing_dependency, Dependency },
+                                Accumulator );
+        _  -> Accumulator
+    end;
+check_dependency_value(Value, Dependency, Accumulator) ->
+    case is_json_object(Dependency) of
+        true -> check_value(Value, unwrap(Dependency), Dependency, Accumulator);
+        false ->
+            case is_list(Dependency) of
+                true -> check_dependency_array(Value, Dependency, Accumulator);
+                false -> accumulate_error( { schema_invalid, Dependency,
+                                             wrong_type_dependency },
+                                           Accumulator )
+            end
+    end.
 
 %% @private
-check_dependency_array(Value, Dependency) ->
-  lists:foreach( fun(PropertyName) ->
-                     check_dependency_value(Value, PropertyName)
-                 end
-               , Dependency
-               ).
+check_dependency_array(Value, Dependency, Accumulator) ->
+    lists:foldl(
+        fun(PropertyName, Acc0) ->
+            check_dependency_value(Value, PropertyName, Acc0)
+        end,
+        Accumulator,
+        Dependency
+    ).
 
 %% @doc 5.9.  minimum
 %%
@@ -649,18 +724,15 @@ check_minimum(Value, Minimum, ExclusiveMinimum) ->
 %% "minimum" attribute.  This is false by default, meaning the instance
 %% value can be greater then or equal to the minimum value.
 %% @end
-  Result = case ExclusiveMinimum of
-             true -> Value > Minimum;
-             _    -> Value >= Minimum
-           end,
-  case Result of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_in_range
-                   , {{minimum, Minimum}, {exclusive, ExclusiveMinimum}}
-                   })
-  end.
+    Result = case ExclusiveMinimum of
+        true -> Value > Minimum;
+        _    -> Value >= Minimum
+    end,
+    case Result of
+        true  -> ok;
+        false -> { data_invalid, Value, not_in_range,
+                   {{minimum, Minimum}, {exclusive, ExclusiveMinimum}} }
+    end.
 
 %%% @doc 5.10.  maximum
 %%
@@ -675,18 +747,15 @@ check_maximum(Value, Maximum, ExclusiveMaximum) ->
 %% "maximum" attribute.  This is false by default, meaning the instance
 %% value can be less then or equal to the maximum value.
 %% @end
-  Result = case ExclusiveMaximum of
-             true -> Value < Maximum;
-             _    -> Value =< Maximum
-           end,
-  case Result of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_in_range
-                   , {{maximum, Maximum}, {exclusive, ExclusiveMaximum}}
-                   })
-  end.
+    Result = case ExclusiveMaximum of
+        true -> Value < Maximum;
+        _    -> Value =< Maximum
+    end,
+    case Result of
+        true  -> ok;
+        false -> { data_invalid, Value, not_in_range,
+                   {{maximum, Maximum}, {exclusive, ExclusiveMaximum}} }
+    end.
 
 %% @doc 5.13.  minItems
 %%
@@ -694,13 +763,9 @@ check_maximum(Value, Maximum, ExclusiveMaximum) ->
 %% the array is the instance value.
 %% @private
 check_min_items(Value, MinItems) when length(Value) >= MinItems ->
-  ok;
+    ok;
 check_min_items(Value, MinItems) ->
-  throw({ data_invalid
-        , Value
-        , not_correct_size
-        , {min_items, MinItems}
-        }).
+    { data_invalid, Value, not_correct_size, {min_items, MinItems} }.
 
 %% @doc 5.14.  maxItems
 %%
@@ -708,13 +773,9 @@ check_min_items(Value, MinItems) ->
 %% the array is the instance value.
 %% @private
 check_max_items(Value, MaxItems) when length(Value) =< MaxItems ->
-  ok;
+    ok;
 check_max_items(Value, MaxItems) ->
-  throw({ data_invalid
-        , Value
-        , not_correct_size
-        , {max_items, MaxItems}
-        }).
+    { data_invalid, Value, not_correct_size, {max_items, MaxItems} }.
 
 %% @doc 5.15.  uniqueItems
 %%
@@ -738,29 +799,30 @@ check_max_items(Value, MaxItems) ->
 %% </ul>
 %% @private
 check_unique_items(Value, true = Uniqueitems) ->
-  lists:foldl( fun(_Item, []) ->
-                   ok;
-                  (Item, RestItems) ->
-                   lists:foreach( fun(ItemFromRest) ->
-                                      case is_equal(Item, ItemFromRest) of
-                                        true  -> throw({ data_invalid
-                                                       , Value
-                                                       , {Item, not_unique}
-                                                       , { uniqueItems
-                                                         , Uniqueitems
-                                                         }
-                                                       });
-                                        false -> ok
-                                      end
-                                  end
-                                , RestItems
-                                ),
-                   tl(RestItems)
-               end
-             , tl(Value)
-             , Value
-             ),
-  ok.
+    try
+        lists:foldl(
+            fun (_Item, []) -> ok;
+                (Item, RestItems) ->
+                    lists:foreach(
+                        fun(ItemFromRest) ->
+                            case is_equal(Item, ItemFromRest) of
+                                true  ->
+                                    throw({ data_invalid, Value,
+                                            {Item, not_unique},
+                                            {uniqueItems, Uniqueitems} });
+                                false -> ok
+                            end
+                        end
+                        , RestItems
+                    ),
+                    tl(RestItems)
+            end,
+            tl(Value),
+            Value
+        )
+    catch
+        throw:Error -> Error
+    end.
 
 %% @doc 5.16.  pattern
 %% When the instance value is a string, this provides a regular
@@ -769,14 +831,10 @@ check_unique_items(Value, true = Uniqueitems) ->
 %% specification from ECMA 262/Perl 5
 %% @private
 check_pattern(Value, Pattern) ->
-  case re:run(Value, Pattern, [{capture, none}]) of
-    match   -> ok;
-    nomatch -> throw({ data_invalid
-                     , Value
-                     , no_match
-                     , Pattern
-                     })
-  end.
+    case re:run(Value, Pattern, [{capture, none}]) of
+        match   -> ok;
+        nomatch -> { data_invalid, Value, no_match, Pattern }
+    end.
 
 %% @doc 5.17.  minLength
 %%
@@ -784,14 +842,11 @@ check_pattern(Value, Pattern) ->
 %% of the string.
 %% @private
 check_min_length(Value, MinLength) ->
-  case length(unicode:characters_to_list(Value)) >= MinLength of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_correct_length
-                   , {min_length, MinLength}
-                   })
-  end.
+    case length(unicode:characters_to_list(Value)) >= MinLength of
+        true  -> ok;
+        false -> {data_invalid, Value, not_correct_length,
+                  {min_length, MinLength}}
+    end.
 
 %% @doc 5.18.  maxLength
 %%
@@ -799,14 +854,11 @@ check_min_length(Value, MinLength) ->
 %% of the string.
 %% @private
 check_max_length(Value, MaxLength) ->
-  case length(unicode:characters_to_list(Value)) =< MaxLength of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_correct_length
-                   , {max_length, MaxLength}
-                   })
-  end.
+    case length(unicode:characters_to_list(Value)) =< MaxLength of
+        true  -> ok;
+        false -> {data_invalid, Value, not_correct_length,
+                  {max_length, MaxLength}}
+    end.
 
 %% @doc 5.19.  enum
 %%
@@ -819,15 +871,13 @@ check_max_length(Value, MaxLength) ->
 %% (Section 5.15).
 %% @private
 check_enum(Value, Enum) ->
-  IsValid = lists:any( fun(ExpectedValue) ->
-                           is_equal(Value, ExpectedValue)
-                       end
-                     , Enum
-                     ),
-  case IsValid of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_in_enum, Enum})
-  end.
+    IsValid =
+        lists:any( fun(ExpectedValue) -> is_equal(Value, ExpectedValue) end,
+                   Enum ),
+    case IsValid of
+        true  -> ok;
+        false -> {data_invalid, Value, not_in_enum, Enum}
+    end.
 
 %% TODO:
 check_format(_Value, _Format) -> ok.
@@ -862,11 +912,10 @@ check_divisible_by(Value, DivisibleBy, _JsonSchema) ->
 %% is not valid.
 %% @private
 check_disallow(Value, Disallow, JsonSchema) ->
-  try check_type(Value, Disallow, []) of
-      ok -> throw({data_invalid, Value, disallowed, JsonSchema})
-  catch
-    throw:{data_invalid, _, _, _} -> ok
-  end.
+    case check_type(Value, Disallow, []) of
+        ok -> {data_invalid, Value, disallowed, JsonSchema};
+        _Error -> ok
+    end.
 
 %% @doc 5.26.  extends
 %%
@@ -879,24 +928,24 @@ check_disallow(Value, Disallow, JsonSchema) ->
 %% another schema MAY define additional attributes, constrain existing
 %% attributes, or add other constraints.
 %% @private
-check_extends(Value, Extends) ->
-  case is_json_object(Extends) of
-    true  ->
-      check_value(Value, unwrap(Extends), Extends);
-    false ->
-      case is_list(Extends) of
-        true  -> check_extends_array(Value, Extends);
-        false -> ok %% TODO: implement handling of $ref
-      end
-  end.
+check_extends(Value, Extends, Accumulator) ->
+    case is_json_object(Extends) of
+        true  ->
+            check_value(Value, unwrap(Extends), Extends, Accumulator);
+        false ->
+            case is_list(Extends) of
+                true  -> check_extends_array(Value, Extends, Accumulator);
+                false -> ok %% TODO: implement handling of $ref
+            end
+    end.
 
 %% @private
-check_extends_array(Value, Extends) ->
-  lists:foreach( fun(SchemaKey) ->
-                     check_extends(Value, SchemaKey)
-                 end
-               , Extends
-               ).
+check_extends_array(Value, Extends, Accumulator) ->
+    lists:foldl(
+        fun(SchemaKey, Acc0) -> check_extends(Value, SchemaKey, Acc0) end,
+        Accumulator,
+        Extends
+    ).
 
 %%=============================================================================
 %% @doc Returns `true' if given values (instance) are equal, otherwise `false'
@@ -968,6 +1017,14 @@ get_path(Key, Schema) ->
 %% @private
 unwrap(Value) ->
   jesse_json_path:unwrap_value(Value).
+
+%% @private
+accumulate_error(ok, Accumulator) -> Accumulator;
+accumulate_error(Error, {_Result, {Fun, Acc0}}) ->
+    {error, {Fun, Fun(Error, Acc0)}}.
+
+dummy_accumulator(_Error, undefined) ->
+    undefined.
 
 %%=============================================================================
 %% @doc This check is needed since objects in `jsx' are lists (proplists)
