@@ -807,9 +807,8 @@ check_unique_items(Value, true = Uniqueitems) ->
                         fun(ItemFromRest) ->
                             case is_equal(Item, ItemFromRest) of
                                 true  ->
-                                    throw({ data_invalid, Value,
-                                            {Item, not_unique},
-                                            {uniqueItems, Uniqueitems} });
+                                    throw({ data_invalid, Value, not_unique,
+                                            Item });
                                 false -> ok
                             end
                         end
