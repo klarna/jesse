@@ -798,7 +798,7 @@ check_max_items(Value, MaxItems) ->
 %%       object.</li>
 %% </ul>
 %% @private
-check_unique_items(Value, true = Uniqueitems) ->
+check_unique_items(Value, true) ->
     try
         lists:foldl(
             fun (_Item, []) -> ok;
