@@ -161,7 +161,7 @@ check_value(Value, [{?ITEMS, Items} | Attrs], JsonSchema, Accumulator0) ->
     Accumulator1 =
         case is_array(Value) of
             true  -> check_items(Value, Items, JsonSchema, Accumulator0);
-            false -> ok
+            false -> Accumulator0
         end,
     check_value(Value, Attrs, JsonSchema, Accumulator1);
 %% doesn't really do anything, since this attribute will be handled
@@ -601,7 +601,7 @@ check_items(Value, Items, JsonSchema, Accumulator) ->
         false when is_list(Items) ->
             check_items_array(Value, Items, JsonSchema, Accumulator);
 
-        _ -> accumulate_error({schema_invalid, Items, wrong_type_items},
+        _ -> accumulate_error({schema_invalid, Items, wrong_type_items, Items},
                               Accumulator)
     end.
 
@@ -696,7 +696,7 @@ check_dependency_value(Value, Dependency, Accumulator) ->
             case is_list(Dependency) of
                 true -> check_dependency_array(Value, Dependency, Accumulator);
                 false -> accumulate_error( { schema_invalid, Dependency,
-                                             wrong_type_dependency },
+                                             wrong_type_dependency, Dependency },
                                            Accumulator )
             end
     end.
