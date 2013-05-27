@@ -97,3 +97,17 @@ triple_error_test() ->
                            {data_invalid, _, no_extra_properties_allowed, _},
                            {data_invalid, _, not_string, _} ]},
                  jesse:validate_with_accumulator(schema(), TripleError)).
+
+custom_accumulator_test() ->
+    SingleError = [
+        {<<"string">>, 121},
+        {<<"contents">>, [
+            {<<"string">>, <<"another-string">>},
+            {<<"integer">>, 10},
+            {<<"array">>, [1,2,3]}
+        ]}
+    ],
+    MyFun = fun (Error, undefined) -> [{my_data, Error}] end,
+    ?assertMatch({error, [ {my_data, {data_invalid, _, not_string, _}} ]},
+                 jesse:validate_with_accumulator(schema(), SingleError,
+                                                 MyFun, undefined)).

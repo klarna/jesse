@@ -517,7 +517,7 @@ check_additional_properties(Value, false, JsonSchema, Accumulator) ->
     PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
     case get_additional_properties(Value, Properties, PatternProperties) of
         []      -> Accumulator;
-        _Extras -> accumulate_error({data_invalid, {Value, _Extras},
+        _Extras -> accumulate_error({data_invalid, Value,
                                      no_extra_properties_allowed, JsonSchema},
                                     Accumulator)
     end;
