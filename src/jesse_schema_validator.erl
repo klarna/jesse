@@ -90,7 +90,7 @@ validate(JsonSchema, Value, AccTuple) ->
 -spec get_schema_id(Schema :: jesse:json_term()) -> string().
 get_schema_id(Schema) ->
   case get_path(?ID, Schema) of
-    [] -> throw({schema_invalid, Schema, missing_id_field});
+    [] -> throw({schema_invalid, Schema, missing_id_field, ?ID});
     Id -> erlang:binary_to_list(Id)
   end.
 
