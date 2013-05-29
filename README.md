@@ -46,8 +46,7 @@ ok
 5> Json2 = jiffy:decode(<<"[1, \"x\"]">>).
 [1,<<"x">>]
 6> jesse:validate(some_key, Json2).
-{error,{data_invalid,<<"x">>,not_integer,
-                     {[{<<"type">>,<<"integer">>}]}}}"]")
+{error,{data_invalid,{[{<<"type">>,<<"integer">>}]}}},wrong_type,<<"x">>)
 ```
 
 (using a callback)
@@ -64,10 +63,9 @@ ok
 3> jesse:validate(some_key,
 3>                <<"[{\"foo\": \"bar\"}, {\"foo\": \"bar\"}] ">>,
 3>                fun jiffy:decode/1).
-{error,{data_invalid,[{[{<<"foo">>,<<"bar">>}]},
-                      {[{<<"foo">>,<<"bar">>}]}],
-                     {{[{<<"foo">>,<<"bar">>}]},not_unique},
-                     {uniqueItems,true}}}
+{error,{data_invalid,[{<<"uniqueItems">>, true}],
+                     not_unique, [{[{<<"foo">>,<<"bar">>}]},
+                                  {[{<<"foo">>,<<"bar">>}]}]}}
 ```
 
 * Call jesse with schema definition in place (do not use internal storage)
@@ -84,7 +82,8 @@ ok
 4> Json2 = jiffy:decode(<<"\"abc\"">>).
 <<"abc">>
 5> jesse:validate_with_schema(Schema, Json2).
-{error,{data_invalid,<<"abc">>,no_match,<<"^a*$">>}}
+{error,{data_invalid,{[{<<"pattern">>,<<"^a*$">>}]},
+                     {no_match,<<"^a*$">>}, <<"abc">>}}
 ```
 
 (using a callback)
@@ -99,8 +98,7 @@ ok
 3> jesse:validate_with_schema(Schema,
 3>                            <<"{\"foo\": \"bar\", \"fooooo\": 2}">>,
 3>                            fun jiffy:decode/1).
-{error,{data_invalid,<<"bar">>,not_integer,
-                     {[{<<"type">>,<<"integer">>}]}}}""}]""}")
+{error,{data_invalid,{[{<<"type">>,<<"integer">>}]},wrong_type,<<"bar">>}}
 ```
 
 Caveats

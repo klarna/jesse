@@ -221,7 +221,8 @@ run_test_set(Schema, TestSet) ->
                      io:format("Result: ~p~n", [Result]),
                      case get_path(?VALID, Test) of
                        true  -> {ok, TestData} = Result;
-                       false -> {error, _} = Result
+                       false -> {error, Error} = Result,
+                                match_error(Error)
                      end
                  end
                , TestSet
@@ -242,6 +243,15 @@ filename_to_key(Filename) ->
 
 get_path(Key, Schema) ->
   jesse_json_path:path(Key, Schema).
+
+match_error({'data_invalid', _, Type, _}) -> match_error_type(Type);
+match_error({'schema_invalid', _, Type}) -> match_error_type(Type);
+match_error(Error) -> throw({'wrong_error_format', Error}).
+
+match_error_type(Atom) when is_atom(Atom) -> ok;
+match_error_type(Tuple) when is_tuple(Tuple)
+                     andalso is_atom(element(1, Tuple)) -> ok;
+match_error_type(Type) -> throw({'wrong_error_type', Type}).
 
 %%% Local Variables:
 %%% erlang-indent-level: 2

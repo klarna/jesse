@@ -36,13 +36,20 @@
         , validate/3
         , validate_with_schema/2
         , validate_with_schema/3
+        , validate_with_accumulator/2
+        , validate_with_accumulator/3
+        , validate_with_accumulator/4
+        , validate_with_accumulator/5
         ]).
 
 -export_type([ json_term/0
              ]).
 
--type json_term() :: term().
--type error()     :: {error, term()}.
+-type accumulator() :: fun((error(), term()) -> term()).
+-type parser()      :: fun((binary()) -> json_term()).
+
+-type json_term()   :: term().
+-type error()       :: {error, term()}.
 
 %%% API
 %% @doc Adds a schema definition `Schema' to in-memory storage associated with
@@ -59,7 +66,7 @@ add_schema(Key, Schema) ->
 %% a supported internal representation of json.
 -spec add_schema( Key      :: any()
                 , Schema   :: binary()
-                , ParseFun :: fun((binary()) -> json_term())
+                , ParseFun :: parser()
                 ) -> ok | error().
 add_schema(Key, Schema, ParseFun) ->
   case try_parse(ParseFun, Schema) of
@@ -81,7 +88,7 @@ del_schema(Key) ->
 %% `MakeKeyFun' is `fun jesse_schema_validator:get_schema_id/1'. In this case
 %% the key will be the value of `id' attribute from the given schemas.
 -spec load_schemas( Path     :: string()
-                  , ParseFun :: fun((binary()) -> json_term())
+                  , ParseFun :: parser()
                   ) -> jesse_database:update_result().
 load_schemas(Path, ParseFun) ->
   load_schemas( Path
@@ -107,7 +114,7 @@ load_schemas(Path, ParseFun) ->
 %%       add_schema/2, the only way to update them is to use add_schema/2
 %%       again with the new definition.
 -spec load_schemas( Path          :: string()
-                  , ParseFun      :: fun((binary()) -> json_term())
+                  , ParseFun      :: parser()
                   , ValidationFun :: fun((any()) -> boolean())
                   , MakeKeyFun    :: fun((json_term()) -> any())
                   ) -> jesse_database:update_result().
@@ -123,7 +130,8 @@ load_schemas(Path, ParseFun, ValidationFun, MakeKeyFun) ->
 validate(Schema, Data) ->
   try
     JsonSchema = jesse_database:read(Schema),
-    jesse_schema_validator:validate(JsonSchema, Data)
+    jesse_schema_validator:validate(JsonSchema, Data,
+                                    {fun throw_on_error/2, undefined})
   catch
     throw:Error ->
       {error, Error}
@@ -134,7 +142,7 @@ validate(Schema, Data) ->
 %% a supported internal representation of json.
 -spec validate( Schema   :: any()
               , Data     :: binary()
-              , ParseFun :: fun((binary()) -> json_term())
+              , ParseFun :: parser()
               ) -> {ok, json_term()}
                  | error().
 validate(Schema, Data, ParseFun) ->
@@ -152,7 +160,8 @@ validate(Schema, Data, ParseFun) ->
                              | error().
 validate_with_schema(Schema, Data) ->
   try
-    jesse_schema_validator:validate(Schema, Data)
+    jesse_schema_validator:validate(Schema, Data,
+                                    {fun throw_on_error/2, undefined})
   catch
     throw:Error ->
       {error, Error}
@@ -163,7 +172,7 @@ validate_with_schema(Schema, Data) ->
 %% to convert the binary string to a supported internal representation of json.
 -spec validate_with_schema( Schema   :: binary()
                           , Data     :: binary()
-                          , ParseFun :: fun((binary()) -> json_term())
+                          , ParseFun :: parser()
                           ) -> {ok, json_term()}
                              | error().
 validate_with_schema(Schema, Data, ParseFun) ->
@@ -179,7 +188,98 @@ validate_with_schema(Schema, Data, ParseFun) ->
       end
   end.
 
+
+%% @doc Equivalent to {@link validate_with_accumulator/4} where both
+%%      <code>Schema</code> and <code>Data</code> are parsed json terms.
+-spec validate_with_accumulator( Schema   :: json_term(),
+                                 Data     :: json_term()
+                               ) ->
+    {ok, json_term()} | {error, [error()]}.
+validate_with_accumulator(Schema, Data) ->
+    validate_with_accumulator(Schema, Data, fun collect_errors/2, []).
+
+
+%% @doc Equivalent to {@link validate_with_schema/3} but with the additional
+%%      argument fun to collect errors. This function will return the original
+%%      JSON in case it is fully correspond to the schema or a list of all
+%%      collected errors, if they are not critical.
+-spec validate_with_accumulator( Schema   :: binary(),
+                                 Data     :: binary(),
+                                 ParseFun :: parser()
+                               ) ->
+    {ok, json_term()} | {error, [error()]}.
+validate_with_accumulator(Schema, Data, ParseFun) ->
+    case try_parse(ParseFun, Schema) of
+        {parse_error, _} = SError ->
+            {error, {schema_error, SError}};
+        ParsedSchema ->
+            case try_parse(ParseFun, Data) of
+                {parse_error, _} = DError ->
+                    {error, {data_error, DError}};
+                ParsedData ->
+                    validate_with_accumulator(ParsedSchema, ParsedData)
+            end
+    end.
+
+
+%% @doc Equivalent to {@link validate_with_accumulator/4} where both
+%%      <code>Schema</code> and <code>Data</code> are parsed json terms.
+-spec validate_with_accumulator( Schema      :: json_term(),
+                                 Data        :: json_term(),
+                                 Accumulator :: accumulator(),
+                                 Initial     :: term()
+                               ) ->
+    {ok, json_term()} | {error, term()}.
+validate_with_accumulator(Schema, Data, Accumulator, Initial) ->
+    try
+        jesse_schema_validator:validate(Schema, Data,
+                                        {Accumulator, Initial})
+    catch
+        throw:Error ->
+            {error, Error}
+    end.
+
+
+%% @doc Equivalent to {@link validate_with_accumulator/4} where both
+%%      <code>Schema</code> and <code>Data</code> are parsed json terms.
+-spec validate_with_accumulator( Schema      :: json_term(),
+                                 Data        :: json_term(),
+                                 ParseFun    :: parser(),
+                                 Accumulator :: accumulator(),
+                                 Initial     :: term()
+                               ) ->
+    {ok, json_term()} | {error, term()}.
+validate_with_accumulator(Schema, Data, ParseFun, Accumulator, Initial) ->
+    case try_parse(ParseFun, Schema) of
+        {parse_error, _} = SError ->
+            {error, {schema_error, SError}};
+        ParsedSchema ->
+            case try_parse(ParseFun, Data) of
+                {parse_error, _} = DError ->
+                    {error, {data_error, DError}};
+                ParsedData ->
+                    validate_with_accumulator(ParsedSchema, ParsedData,
+                                              Accumulator, Initial)
+            end
+    end.
+
+
+%%% ----------------------------------------------------------------------------
 %%% Internal functions
+%%% ----------------------------------------------------------------------------
+
+%% @doc Utility function to be used as a dummy accumulator callback which fails
+%%      on the first error.
+%% @private
+throw_on_error(Error, _) ->
+    throw(Error).
+
+
+%% @doc Utility function to accumulate errors found during validation.
+%% @private
+collect_errors(Error, List) ->
+    [Error | List].
+
 %% @doc Wraps up calls to a third party json parser.
 %% @private
 try_parse(ParseFun, JsonBin) ->
