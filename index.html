@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Jesse by klarna</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Jesse</h1>
+        <p>jesse (JSon Schema Erlang) is an implementation of a json schema validator for Erlang.</p>
+
+        <p class="view"><a href="https://github.com/klarna/jesse">View the Project on GitHub <small>klarna/jesse</small></a></p>
+
+
+        <ul>
+          <li><a href="https://github.com/klarna/jesse/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/klarna/jesse/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/klarna/jesse">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h1></h1>
+
+<h1>
+<a name="jesse-" class="anchor" href="#jesse-"><span class="octicon octicon-link"></span></a>jesse <a href="http://travis-ci.org/klarna/jesse"><img src="https://secure.travis-ci.org/klarna/jesse.png" alt="Build Status"></a>
+</h1>
+
+<p>jesse (JSon Schema Erlang) is an implementation of a json schema validator
+for Erlang.</p>
+
+<p>jesse implements <a href="http://tools.ietf.org/html/draft-zyp-json-schema-03">Draft 03</a> of
+the specification. It supports almost all core schema definitions except:</p>
+
+<ul>
+<li>format</li>
+<li>$ref</li>
+</ul><h2>
+<a name="quick-start" class="anchor" href="#quick-start"><span class="octicon octicon-link"></span></a>Quick start</h2>
+
+<p>There are two ways of using jesse:</p>
+
+<ul>
+<li>to use jesse internal in-memory storage to keep all your schema definitions
+In this case jesse will look up a schema definition in its own storage,
+and then validate given json.</li>
+<li>it is also possible to provide jesse with schema definitions when jesse is called.</li>
+</ul><h2>
+<a name="examples" class="anchor" href="#examples"><span class="octicon octicon-link"></span></a>Examples</h2>
+
+<pre><code>NOTE: jesse doesn't have any parsing functionality. It currently works with three
+      formats: mochijson2, jiffy and jsx, so json needs to be parsed in advance,
+      or you can specify a callback which jesse will use to parse json.
+
+      In examples below and in jesse test suite jiffy parser is used.
+</code></pre>
+
+<ul>
+<li>Use jesse's internal in-memory storage:</li>
+</ul><p>(parse json in advance)</p>
+
+<div class="highlight"><pre><span class="mi">1</span><span class="o">&gt;</span> <span class="nv">Schema</span> <span class="o">=</span> <span class="nn">jiffy</span><span class="p">:</span><span class="nf">decode</span><span class="p">(</span><span class="o">&lt;&lt;</span><span class="s">"{</span><span class="se">\"</span><span class="s">items</span><span class="se">\"</span><span class="s">: {</span><span class="se">\"</span><span class="s">type</span><span class="se">\"</span><span class="s">: </span><span class="se">\"</span><span class="s">integer</span><span class="se">\"</span><span class="s">}}"</span><span class="o">&gt;&gt;</span><span class="p">).</span>
+<span class="p">{[{</span><span class="o">&lt;&lt;</span><span class="s">"items"</span><span class="o">&gt;&gt;</span><span class="p">,{[{</span><span class="o">&lt;&lt;</span><span class="s">"type"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"integer"</span><span class="o">&gt;&gt;</span><span class="p">}]}}]}</span>
+<span class="mi">2</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">add_schema</span><span class="p">(</span><span class="n">some_key</span><span class="p">,</span> <span class="nv">Schema</span><span class="p">).</span>
+<span class="n">ok</span>
+<span class="mi">3</span><span class="o">&gt;</span> <span class="nv">Json1</span> <span class="o">=</span> <span class="nn">jiffy</span><span class="p">:</span><span class="nf">decode</span><span class="p">(</span><span class="o">&lt;&lt;</span><span class="s">"[1, 2, 3]"</span><span class="o">&gt;&gt;</span><span class="p">).</span>
+<span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">]</span>
+<span class="mi">4</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate</span><span class="p">(</span><span class="n">some_key</span><span class="p">,</span> <span class="nv">Json1</span><span class="p">).</span>
+<span class="p">{</span><span class="n">ok</span><span class="p">,[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">]}</span>
+<span class="mi">5</span><span class="o">&gt;</span> <span class="nv">Json2</span> <span class="o">=</span> <span class="nn">jiffy</span><span class="p">:</span><span class="nf">decode</span><span class="p">(</span><span class="o">&lt;&lt;</span><span class="s">"[1, </span><span class="se">\"</span><span class="s">x</span><span class="se">\"</span><span class="s">]"</span><span class="o">&gt;&gt;</span><span class="p">).</span>
+<span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"x"</span><span class="o">&gt;&gt;</span><span class="p">]</span>
+<span class="mi">6</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate</span><span class="p">(</span><span class="n">some_key</span><span class="p">,</span> <span class="nv">Json2</span><span class="p">).</span>
+<span class="p">{</span><span class="n">error</span><span class="p">,{</span><span class="n">data_invalid</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"x"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="n">not_integer</span><span class="p">,</span>
+                     <span class="p">{[{</span><span class="o">&lt;&lt;</span><span class="s">"type"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"integer"</span><span class="o">&gt;&gt;</span><span class="p">}]}}}</span><span class="s">"]"</span><span class="p">)</span>
+</pre></div>
+
+<p>(using a callback)</p>
+
+<div class="highlight"><pre><span class="mi">1</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">add_schema</span><span class="p">(</span><span class="n">some_key</span><span class="p">,</span>
+<span class="mi">1</span><span class="o">&gt;</span>                  <span class="o">&lt;&lt;</span><span class="s">"{</span><span class="se">\"</span><span class="s">uniqueItems</span><span class="se">\"</span><span class="s">: true}"</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<span class="mi">1</span><span class="o">&gt;</span>                  <span class="k">fun</span> <span class="nn">jiffy</span><span class="p">:</span><span class="n">decode</span><span class="o">/</span><span class="mi">1</span><span class="p">).</span>
+<span class="n">ok</span>
+<span class="mi">2</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate</span><span class="p">(</span><span class="n">some_key</span><span class="p">,</span>
+<span class="mi">2</span><span class="o">&gt;</span>                <span class="o">&lt;&lt;</span><span class="s">"[1, 2]"</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<span class="mi">2</span><span class="o">&gt;</span>                <span class="k">fun</span> <span class="nn">jiffy</span><span class="p">:</span><span class="n">decode</span><span class="o">/</span><span class="mi">1</span><span class="p">).</span>
+<span class="p">{</span><span class="n">ok</span><span class="p">,[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">]}</span>
+<span class="mi">3</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate</span><span class="p">(</span><span class="n">some_key</span><span class="p">,</span>
+<span class="mi">3</span><span class="o">&gt;</span>                <span class="o">&lt;&lt;</span><span class="s">"[{</span><span class="se">\"</span><span class="s">foo</span><span class="se">\"</span><span class="s">: </span><span class="se">\"</span><span class="s">bar</span><span class="se">\"</span><span class="s">}, {</span><span class="se">\"</span><span class="s">foo</span><span class="se">\"</span><span class="s">: </span><span class="se">\"</span><span class="s">bar</span><span class="se">\"</span><span class="s">}] "</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<span class="mi">3</span><span class="o">&gt;</span>                <span class="k">fun</span> <span class="nn">jiffy</span><span class="p">:</span><span class="n">decode</span><span class="o">/</span><span class="mi">1</span><span class="p">).</span>
+<span class="p">{</span><span class="n">error</span><span class="p">,{</span><span class="n">data_invalid</span><span class="p">,[{[{</span><span class="o">&lt;&lt;</span><span class="s">"foo"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"bar"</span><span class="o">&gt;&gt;</span><span class="p">}]},</span>
+                      <span class="p">{[{</span><span class="o">&lt;&lt;</span><span class="s">"foo"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"bar"</span><span class="o">&gt;&gt;</span><span class="p">}]}],</span>
+                     <span class="p">{{[{</span><span class="o">&lt;&lt;</span><span class="s">"foo"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"bar"</span><span class="o">&gt;&gt;</span><span class="p">}]},</span><span class="n">not_unique</span><span class="p">},</span>
+                     <span class="p">{</span><span class="n">uniqueItems</span><span class="p">,</span><span class="n">true</span><span class="p">}}}</span>
+</pre></div>
+
+<ul>
+<li>Call jesse with schema definition in place (do not use internal storage)</li>
+</ul><p>(parse json in advance)</p>
+
+<div class="highlight"><pre><span class="mi">1</span><span class="o">&gt;</span> <span class="nv">Schema</span> <span class="o">=</span> <span class="nn">jiffy</span><span class="p">:</span><span class="nf">decode</span><span class="p">(</span><span class="o">&lt;&lt;</span><span class="s">"{</span><span class="se">\"</span><span class="s">pattern</span><span class="se">\"</span><span class="s">: </span><span class="se">\"</span><span class="s">^a*$</span><span class="se">\"</span><span class="s">}"</span><span class="o">&gt;&gt;</span><span class="p">).</span>
+<span class="p">{[{</span><span class="o">&lt;&lt;</span><span class="s">"pattern"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"^a*$"</span><span class="o">&gt;&gt;</span><span class="p">}]}</span>
+<span class="mi">2</span><span class="o">&gt;</span> <span class="nv">Json1</span> <span class="o">=</span> <span class="nn">jiffy</span><span class="p">:</span><span class="nf">decode</span><span class="p">(</span><span class="o">&lt;&lt;</span><span class="s">"</span><span class="se">\"</span><span class="s">aaa</span><span class="se">\"</span><span class="s">"</span><span class="o">&gt;&gt;</span><span class="p">).</span>
+<span class="o">&lt;&lt;</span><span class="s">"aaa"</span><span class="o">&gt;&gt;</span>
+<span class="mi">3</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate_with_schema</span><span class="p">(</span><span class="nv">Schema</span><span class="p">,</span> <span class="nv">Json1</span><span class="p">).</span>
+<span class="p">{</span><span class="n">ok</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"aaa"</span><span class="o">&gt;&gt;</span><span class="p">}</span>
+<span class="mi">4</span><span class="o">&gt;</span> <span class="nv">Json2</span> <span class="o">=</span> <span class="nn">jiffy</span><span class="p">:</span><span class="nf">decode</span><span class="p">(</span><span class="o">&lt;&lt;</span><span class="s">"</span><span class="se">\"</span><span class="s">abc</span><span class="se">\"</span><span class="s">"</span><span class="o">&gt;&gt;</span><span class="p">).</span>
+<span class="o">&lt;&lt;</span><span class="s">"abc"</span><span class="o">&gt;&gt;</span>
+<span class="mi">5</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate_with_schema</span><span class="p">(</span><span class="nv">Schema</span><span class="p">,</span> <span class="nv">Json2</span><span class="p">).</span>
+<span class="p">{</span><span class="n">error</span><span class="p">,{</span><span class="n">data_invalid</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"abc"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="n">no_match</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"^a*$"</span><span class="o">&gt;&gt;</span><span class="p">}}</span>
+</pre></div>
+
+<p>(using a callback)</p>
+
+<div class="highlight"><pre><span class="mi">1</span><span class="o">&gt;</span> <span class="nv">Schema</span> <span class="o">=</span> <span class="o">&lt;&lt;</span><span class="s">"{</span><span class="se">\"</span><span class="s">patternProperties</span><span class="se">\"</span><span class="s">: {</span><span class="se">\"</span><span class="s">f.*o</span><span class="se">\"</span><span class="s">: {</span><span class="se">\"</span><span class="s">type</span><span class="se">\"</span><span class="s">: </span><span class="se">\"</span><span class="s">integer</span><span class="se">\"</span><span class="s">}}}"</span><span class="o">&gt;&gt;</span><span class="p">.</span>
+<span class="o">&lt;&lt;</span><span class="s">"{</span><span class="se">\"</span><span class="s">patternProperties</span><span class="se">\"</span><span class="s">: {</span><span class="se">\"</span><span class="s">f.*o</span><span class="se">\"</span><span class="s">: {</span><span class="se">\"</span><span class="s">type</span><span class="se">\"</span><span class="s">: </span><span class="se">\"</span><span class="s">integer</span><span class="se">\"</span><span class="s">}}}"</span><span class="o">&gt;&gt;</span>
+<span class="mi">2</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate_with_schema</span><span class="p">(</span><span class="nv">Schema</span><span class="p">,</span>
+<span class="mi">2</span><span class="o">&gt;</span>                            <span class="o">&lt;&lt;</span><span class="s">"{</span><span class="se">\"</span><span class="s">foo</span><span class="se">\"</span><span class="s">: 1, </span><span class="se">\"</span><span class="s">foooooo</span><span class="se">\"</span><span class="s"> : 2}"</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<span class="mi">2</span><span class="o">&gt;</span>                            <span class="k">fun</span> <span class="nn">jiffy</span><span class="p">:</span><span class="n">decode</span><span class="o">/</span><span class="mi">1</span><span class="p">).</span>
+<span class="p">{</span><span class="n">ok</span><span class="p">,{[{</span><span class="o">&lt;&lt;</span><span class="s">"foo"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="mi">1</span><span class="p">},{</span><span class="o">&lt;&lt;</span><span class="s">"foooooo"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="mi">2</span><span class="p">}]}}</span>
+<span class="mi">3</span><span class="o">&gt;</span> <span class="nn">jesse</span><span class="p">:</span><span class="nf">validate_with_schema</span><span class="p">(</span><span class="nv">Schema</span><span class="p">,</span>
+<span class="mi">3</span><span class="o">&gt;</span>                            <span class="o">&lt;&lt;</span><span class="s">"{</span><span class="se">\"</span><span class="s">foo</span><span class="se">\"</span><span class="s">: </span><span class="se">\"</span><span class="s">bar</span><span class="se">\"</span><span class="s">, </span><span class="se">\"</span><span class="s">fooooo</span><span class="se">\"</span><span class="s">: 2}"</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<span class="mi">3</span><span class="o">&gt;</span>                            <span class="k">fun</span> <span class="nn">jiffy</span><span class="p">:</span><span class="n">decode</span><span class="o">/</span><span class="mi">1</span><span class="p">).</span>
+<span class="p">{</span><span class="n">error</span><span class="p">,{</span><span class="n">data_invalid</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"bar"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="n">not_integer</span><span class="p">,</span>
+                     <span class="p">{[{</span><span class="o">&lt;&lt;</span><span class="s">"type"</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="o">&lt;&lt;</span><span class="s">"integer"</span><span class="o">&gt;&gt;</span><span class="p">}]}}}</span><span class="s">""</span><span class="p">}]</span><span class="s">""</span><span class="p">}</span><span class="s">")</span>
+</pre></div>
+
+<h2>
+<a name="caveats" class="anchor" href="#caveats"><span class="octicon octicon-link"></span></a>Caveats</h2>
+
+<ul>
+<li>
+<p>pattern and patternProperty attributes:</p>
+
+<p>jesse uses standard erlang module <code>re</code> for regexp matching, therefore there could be
+some incompatible regular expressions in schemas you define.</p>
+
+<p>From erlang docs: "re's matching algorithms are currently based on the PCRE library,
+but not all of the PCRE library is interfaced"</p>
+
+<p>But most of common cases should work fine.</p>
+</li>
+</ul><h2>
+<a name="contributing" class="anchor" href="#contributing"><span class="octicon octicon-link"></span></a>Contributing</h2>
+
+<p>If you see something missing or incorrect, a pull request is most welcome!</p>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/klarna">klarna</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
