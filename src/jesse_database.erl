@@ -176,19 +176,19 @@ get_updated_files(InDir) ->
 %% function `ParseFun'. Silently ignores subdirectories.
 %% @private
 load_schema(InDir, Files, ParseFun) ->
-  LoadFun = fun(InFile) ->
+  LoadFun = fun(InFile, Acc) ->
                 InFilePath      = get_full_path(InDir, InFile),
                 case file:read_file(InFilePath) of
                   {ok, SchemaBin} ->
                     {ok, FileInfo}  = file:read_file_info(InFilePath),
                     TimeStamp       = FileInfo#file_info.mtime,
                     Schema          = try_parse(ParseFun, SchemaBin),
-                    {InFile, TimeStamp, Schema};
+                    [{InFile, TimeStamp, Schema} | Acc];
                   {error, eisdir} ->
-                    []
+                    Acc
                 end
             end,
-  lists:flatten(lists:map(LoadFun, Files)).
+  lists:foldl(LoadFun, [], Files).
 
 %% @doc Wraps up calls to a third party json parser.
 %% @private
