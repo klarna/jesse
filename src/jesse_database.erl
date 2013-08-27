@@ -173,18 +173,22 @@ get_updated_files(InDir) ->
 
 %% @doc Loads schema definitions from a list of files `Files' located in
 %% directory `InDir', and parses each of entry by the given parse
-%% function `ParseFun'.
+%% function `ParseFun'. Silently ignores subdirectories.
 %% @private
 load_schema(InDir, Files, ParseFun) ->
   LoadFun = fun(InFile) ->
                 InFilePath      = get_full_path(InDir, InFile),
-                {ok, SchemaBin} = file:read_file(InFilePath),
-                {ok, FileInfo}  = file:read_file_info(InFilePath),
-                TimeStamp       = FileInfo#file_info.mtime,
-                Schema          = try_parse(ParseFun, SchemaBin),
-                {InFile, TimeStamp, Schema}
+                case file:read_file(InFilePath) of
+                  {ok, SchemaBin} ->
+                    {ok, FileInfo}  = file:read_file_info(InFilePath),
+                    TimeStamp       = FileInfo#file_info.mtime,
+                    Schema          = try_parse(ParseFun, SchemaBin),
+                    {InFile, TimeStamp, Schema};
+                  {error, eisdir} ->
+                    []
+                end
             end,
-  lists:map(LoadFun, Files).
+  lists:flatten(lists:map(LoadFun, Files)).
 
 %% @doc Wraps up calls to a third party json parser.
 %% @private
