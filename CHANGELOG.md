@@ -1,6 +1,14 @@
 CHANGELOG
 =========
 
+0.4.0
+-----
+
+*   Change API
+*   Introduce 'state' in the validator
+*   Add possibility to collect errors
+*   Change errors format
+
 0.3.0
 -----
 
