@@ -13,9 +13,6 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
-%% @copyright 2013 Klarna AB
-%% @author Alexander Dergachev <alexander.dergachev@klarna.com>
-%%
 %% @doc JESSE (JSon Schema Erlang)
 %%
 %% This is an interface module which provides an access to the main
@@ -42,7 +39,35 @@
              ]).
 
 -type json_term() :: term().
--type error()     :: {error, term()}.
+-type error()     :: {error, [error_reason()]}.
+
+-type error_reason() :: { 'schema_invalid'
+                        , Schema :: json_term()
+                        , Error :: error_type()
+                        }
+                      | { 'data_invalid'
+                        , Schema :: json_term()
+                        , Error  :: error_type()
+                        , Data   :: json_term()
+                        }.
+
+-type error_type() :: {'missing_id_field', Field :: binary()}
+                    | {'missing_required_property', Name :: binary()}
+                    | {'missing_dependency', Name :: binary()}
+                    | {'no_match', Pattern :: binary()}
+                    | 'no_extra_properties_allowed'
+                    | 'no_extra_items_allowed'
+                    | 'not_enought_items'
+                    | 'not_allowed'
+                    | {'not_unique', Value :: json_term()}
+                    | 'not_in_range'
+                    | 'not_divisible'
+                    | 'wrong_type'
+                    | {'wrong_type_items', Items :: json_term()}
+                    | {'wrong_type_dependency', Dependency :: json_term()}
+                    | 'wrong_size'
+                    | 'wrong_length'
+                    | 'wrong_format'.
 
 %%% API
 %% @doc Adds a schema definition `Schema' to in-memory storage associated with
@@ -57,14 +82,17 @@ add_schema(Key, Schema) ->
 %% @doc Equivalent to `add_schema/2', but `Schema' is a binary string, and
 %% the third agument is a parse function to convert the binary string to
 %% a supported internal representation of json.
--spec add_schema( Key      :: any()
-                , Schema   :: binary()
-                , ParseFun :: fun((binary()) -> json_term())
+-spec add_schema( Key       :: any()
+                , Schema    :: binary()
+                , Options   :: [{Key :: atom(), Data :: any()}]
                 ) -> ok | error().
-add_schema(Key, Schema, ParseFun) ->
-  case try_parse(ParseFun, Schema) of
-    {parse_error, _} = SError -> {error, {schema_error, SError}};
-    ParsedSchema              -> add_schema(Key, ParsedSchema)
+add_schema(Key, Schema, Options) ->
+  try
+    ParserFun    = proplists:get_value(parser_fun, Options, fun(X) -> X end),
+    ParsedSchema = try_parse(schema, ParserFun, Schema),
+    add_schema(Key, ParsedSchema)
+  catch
+    throw:Error -> {error, Error}
   end.
 
 
@@ -76,16 +104,16 @@ del_schema(Key) ->
 
 %% @doc Loads schema definitions from filesystem to in-memory storage.
 %%
-%% Equivalent to `load_schemas(Path, ParseFun, ValidationFun, MakeKeyFun)'
+%% Equivalent to `load_schemas(Path, ParserFun, ValidationFun, MakeKeyFun)'
 %% where `ValidationFun' is `fun jesse_json:is_json_object/1' and
 %% `MakeKeyFun' is `fun jesse_schema_validator:get_schema_id/1'. In this case
 %% the key will be the value of `id' attribute from the given schemas.
--spec load_schemas( Path     :: string()
-                  , ParseFun :: fun((binary()) -> json_term())
+-spec load_schemas( Path      :: string()
+                  , ParserFun :: fun((binary()) -> json_term())
                   ) -> jesse_database:update_result().
-load_schemas(Path, ParseFun) ->
+load_schemas(Path, ParserFun) ->
   load_schemas( Path
-              , ParseFun
+              , ParserFun
               , fun jesse_schema_validator:is_json_object/1
               , fun jesse_schema_validator:get_schema_id/1
               ).
@@ -101,93 +129,90 @@ load_schemas(Path, ParseFun) ->
 %% unnecessary updates.
 %%
 %% Schema definitions are stored in the format which json parsing function
-%% `ParseFun' returns.
+%% `ParserFun' returns.
 %%
 %% NOTE: it's impossible to automatically update schema definitions added by
 %%       add_schema/2, the only way to update them is to use add_schema/2
 %%       again with the new definition.
 -spec load_schemas( Path          :: string()
-                  , ParseFun      :: fun((binary()) -> json_term())
+                  , ParserFun     :: fun((binary()) -> json_term())
                   , ValidationFun :: fun((any()) -> boolean())
                   , MakeKeyFun    :: fun((json_term()) -> any())
                   ) -> jesse_database:update_result().
-load_schemas(Path, ParseFun, ValidationFun, MakeKeyFun) ->
-  jesse_database:update(Path, ParseFun, ValidationFun, MakeKeyFun).
+load_schemas(Path, ParserFun, ValidationFun, MakeKeyFun) ->
+  jesse_database:update(Path, ParserFun, ValidationFun, MakeKeyFun).
 
-%% @doc Validates json `Data' against a schema with the same key as `Schema'
-%% in the internal storage. If the given json is valid, then it is returned
-%% to the caller, otherwise an error with an appropriate error reason
-%% is returned.
--spec validate(Schema :: any(), Data :: json_term()) -> {ok, json_term()}
-                                                      | error().
-validate(Schema, Data) ->
-  try
-    JsonSchema = jesse_database:read(Schema),
-    jesse_schema_validator:validate(JsonSchema, Data)
-  catch
-    throw:Error ->
-      {error, Error}
-  end.
-
-%% @doc Equivalent to `validate/2', but `Data' is a binary string, and
-%% the third agument is a parse function to convert the binary string to
-%% a supported internal representation of json.
--spec validate( Schema   :: any()
-              , Data     :: binary()
-              , ParseFun :: fun((binary()) -> json_term())
+%% @doc Equivalent to {@link validate/3} where `Options' is an empty list.
+-spec validate( Schema :: any()
+              , Data   :: json_term() | binary()
               ) -> {ok, json_term()}
                  | error().
-validate(Schema, Data, ParseFun) ->
-  case try_parse(ParseFun, Data) of
-    {parse_error, _} = DError -> {error, {data_error, DError}};
-    ParsedJson                -> validate(Schema, ParsedJson)
+validate(Schema, Data) ->
+  validate(Schema, Data, []).
+
+%% @doc Validates json `Data' against a schema with the same key as `Schema'
+%% in the internal storage, using `Options'. If the given json is valid,
+%% then it is returned to the caller, otherwise an error with an appropriate
+%% error reason is returned. If `parser_fun' option is provided, then
+%% `Data' is considered to be a binary string, so `parser_fun' is used
+%% to convert the binary string to a supported internal representation of json.
+-spec validate( Schema   :: any()
+              , Data     :: binary()
+              , Options  :: [{Key :: atom(), Data :: any()}]
+              ) -> {ok, json_term()}
+                 | error().
+validate(Schema, Data, Options) ->
+  try
+    ParserFun  = proplists:get_value(parser_fun, Options, fun(X) -> X end),
+    ParsedData = try_parse(data, ParserFun, Data),
+    JsonSchema = jesse_database:read(Schema),
+    jesse_schema_validator:validate(JsonSchema, ParsedData, Options)
+  catch
+    throw:Error -> {error, Error}
   end.
 
-%% @doc Validates json `Data' agains the given schema `Schema'. If the given
-%% json is valid, the it is returned to the caller, otherwise an error with
-%% an appropriate error reason is returned.
+%% @doc Equivalent to {@link validate_with_schema/3} where `Options'
+%% is an empty list.
 -spec validate_with_schema( Schema :: json_term()
                           , Data   :: json_term()
                           ) -> {ok, json_term()}
                              | error().
 validate_with_schema(Schema, Data) ->
-  try
-    jesse_schema_validator:validate(Schema, Data)
-  catch
-    throw:Error ->
-      {error, Error}
-  end.
+  validate_with_schema(Schema, Data, []).
 
-%% @doc Equivalent to `validate_with_schema/2', but both `Schema' and
-%% `Data' are binary strings, and the third arguments is a parse function
-%% to convert the binary string to a supported internal representation of json.
+%% @doc Validates json `Data' agains the given schema `Schema', using `Options'.
+%% If the given json is valid, then it is returned to the caller, otherwise
+%% an error with an appropriate error reason is returned. If `parser_fun' option
+%% is provided, then `Data' is considered to be a binary string, so
+%% `parser_fun' is used to convert the binary string to a supported internal
+%% representation of json.
 -spec validate_with_schema( Schema   :: binary()
                           , Data     :: binary()
-                          , ParseFun :: fun((binary()) -> json_term())
+                          , Options  :: [{Key :: atom(), Data :: any()}]
                           ) -> {ok, json_term()}
                              | error().
-validate_with_schema(Schema, Data, ParseFun) ->
-  case try_parse(ParseFun, Schema) of
-    {parse_error, _} = SError ->
-      {error, {schema_error, SError}};
-    ParsedSchema ->
-      case try_parse(ParseFun, Data) of
-        {parse_error, _} = DError ->
-          {error, {data_error, DError}};
-        ParsedData ->
-          validate_with_schema(ParsedSchema, ParsedData)
-      end
+validate_with_schema(Schema, Data, Options) ->
+  try
+    ParserFun    = proplists:get_value(parser_fun, Options, fun(X) -> X end),
+    ParsedSchema = try_parse(schema, ParserFun, Schema),
+    ParsedData   = try_parse(data, ParserFun, Data),
+    jesse_schema_validator:validate(ParsedSchema, ParsedData, Options)
+  catch
+    throw:Error -> {error, Error}
   end.
 
 %%% Internal functions
 %% @doc Wraps up calls to a third party json parser.
 %% @private
-try_parse(ParseFun, JsonBin) ->
+try_parse(Type, ParserFun, JsonBin) ->
   try
-    ParseFun(JsonBin)
+    ParserFun(JsonBin)
   catch
     _:Error ->
-      {parse_error, Error}
+      case Type of
+        data   -> throw({data_error, {parse_error, Error}});
+        schema -> throw({schema_error, {parse_error, Error}})
+      end
   end.
 
 %%% Local Variables:

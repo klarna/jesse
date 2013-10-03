@@ -13,9 +13,6 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
-%% @copyright 2013 Klarna AB
-%% @author Alexander Dergachev <alexander.dergachev@klarna.com>
-%%
 %% @doc Json schema validation module.
 %%
 %% This module is the core of jesse, it implements the validation functionality
@@ -26,9 +23,10 @@
 -module(jesse_schema_validator).
 
 %% API
--export([ validate/2
+-export([ validate/3
         , get_schema_id/1
         , is_json_object/1
+        , default_error_handler/3
         ]).
 
 %% Constant definitions for Json schema keywords
@@ -68,16 +66,58 @@
 -define(OBJECT,               <<"object">>).
 -define(STRING,               <<"string">>).
 
+%%
+-define(data_invalid,                'data_invalid').
+-define(schema_invalid,              'schema_invalid').
+
+-define(missing_id_field,            'missing_id_field').
+-define(missing_required_property,   'missing_required_property').
+-define(missing_dependency,          'missing_dependency').
+-define(no_match,                    'no_match').
+-define(no_extra_properties_allowed, 'no_extra_properties_allowed').
+-define(no_extra_items_allowed,      'no_extra_items_allowed').
+-define(not_enought_items,           'not_enought_items').
+-define(not_allowed,                 'not_allowed').
+-define(not_unique,                  'not_unique').
+-define(not_in_range,                'not_in_range').
+-define(not_divisible,               'not_divisible').
+-define(wrong_type,                  'wrong_type').
+-define(wrong_type_items,            'wrong_type_items').
+-define(wrong_type_dependency,       'wrong_type_dependency').
+-define(wrong_size,                  'wrong_size').
+-define(wrong_length,                'wrong_length').
+-define(wrong_format,                'wrong_format').
+
+%% Internal datastructures
+-record( state
+       , { original_schema :: jesse:json_term()
+         , current_schema  :: jesse:json_term()
+         , allowed_errors  :: non_neg_integer() | 'infinity'
+         , error_list      :: list()
+         , error_handler   :: fun((#state{}) -> list() | no_return())
+         }
+       ).
+
+
 %%% API
-%% @doc Validates json `Data' against `Schema'. If the given json is valid,
-%% then it is returned to the caller as is, otherwise an exception
-%% will be thrown.
+%% @doc Validates json `Data' against `Schema' with `Options'.
+%% If the given json is valid, then it is returned to the caller as is,
+%% otherwise an exception will be thrown.
 -spec validate( JsonSchema :: jesse:json_term()
               , Data       :: jesse:json_term()
+              , Options    :: [{Key :: atom(), Data :: any()}]
               ) -> {ok, jesse:json_term()}
                  | no_return().
-validate(JsonSchema, Value) ->
-  {check_value(Value, unwrap(JsonSchema), JsonSchema), Value}.
+validate(JsonSchema, Value, Options) ->
+  State    = new_state(JsonSchema, Options),
+  NewState = check_value(Value, unwrap(JsonSchema), State),
+  {result(NewState), Value}.
+
+result(State) ->
+  case State#state.error_list of
+    [] -> ok;
+    _  -> throw(State#state.error_list)
+  end.
 
 %% @doc Returns value of "id" field from json object `Schema', assuming that
 %% the given json object has such a field, otherwise an exception
@@ -110,149 +150,159 @@ is_json_object(_)                                   -> false.
 %% @doc Goes through attributes of the given schema `JsonSchema' and
 %% validates the value `Value' against them.
 %% @private
-check_value(Value, [{?TYPE, Type} | Attrs], JsonSchema) ->
-  check_type(Value, Type, JsonSchema),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?PROPERTIES, Properties} | Attrs], JsonSchema) ->
-  case is_json_object(Value) of
-    true  -> check_properties(Value, unwrap(Properties));
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?TYPE, Type} | Attrs], State) ->
+  NewState = check_type(Value, Type, State),
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?PROPERTIES, Properties} | Attrs], State) ->
+  NewState = case is_json_object(Value) of
+               true  -> check_properties( Value
+                                        , unwrap(Properties)
+                                        , State
+                                        );
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
 check_value( Value
            , [{?PATTERNPROPERTIES, PatternProperties} | Attrs]
-           , JsonSchema
+           , State
            ) ->
-  case is_json_object(Value) of
-    true  -> check_pattern_properties(Value, PatternProperties);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+  NewState = case is_json_object(Value) of
+               true  -> check_pattern_properties( Value
+                                                , PatternProperties
+                                                , State
+                                                );
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
 check_value( Value
            , [{?ADDITIONALPROPERTIES, AdditionalProperties} | Attrs]
-           , JsonSchema
+           , State
            ) ->
-  case is_json_object(Value) of
-    true  -> check_additional_properties( Value
-                                        , AdditionalProperties
-                                        , JsonSchema
-                                        );
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?ITEMS, Items} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_items(Value, Items, JsonSchema);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+  NewState = case is_json_object(Value) of
+               true  -> check_additional_properties( Value
+                                                   , AdditionalProperties
+                                                   , State
+                                                   );
+               false -> State
+       end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?ITEMS, Items} | Attrs], State) ->
+  NewState = case is_array(Value) of
+               true  -> check_items(Value, Items, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
 check_value( Value
            , [{?ADDITIONALITEMS, _AdditionalItems} | Attrs]
-           , JsonSchema
+           , State
            ) ->
-  check_value(Value, Attrs, JsonSchema);
+  check_value(Value, Attrs, State);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
-check_value(Value, [{?REQUIRED, _Required} | Attrs], JsonSchema) ->
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?DEPENDENCIES, Dependencies} | Attrs], JsonSchema) ->
-  case is_json_object(Value) of
-    true  -> check_dependencies(Value, Dependencies);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MINIMUM, Minimum} | Attrs], JsonSchema) ->
-  case is_number(Value) of
-    true  ->
-      ExclusiveMinimum = get_path(?EXCLUSIVEMINIMUM, JsonSchema),
-      check_minimum(Value, Minimum, ExclusiveMinimum);
-    false ->
-      ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MAXIMUM, Maximum} | Attrs], JsonSchema) ->
-  case is_number(Value) of
-    true  ->
-      ExclusiveMaximum = get_path(?EXCLUSIVEMAXIMUM, JsonSchema),
-      check_maximum(Value, Maximum, ExclusiveMaximum);
-    false ->
-      ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
+check_value(Value, [{?REQUIRED, _Required} | Attrs], State) ->
+  check_value(Value, Attrs, State);
+check_value(Value, [{?DEPENDENCIES, Dependencies} | Attrs], State) ->
+  NewState = case is_json_object(Value) of
+               true  -> check_dependencies(Value, Dependencies, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?MINIMUM, Minimum} | Attrs], State) ->
+  NewState = case is_number(Value) of
+               true  ->
+                 ExclusiveMinimum = get_path( ?EXCLUSIVEMINIMUM
+                                            , get_current_schema(State)
+                                            ),
+                 check_minimum(Value, Minimum, ExclusiveMinimum, State);
+               false ->
+                 State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?MAXIMUM, Maximum} | Attrs], State) ->
+  NewState = case is_number(Value) of
+               true  ->
+                 ExclusiveMaximum = get_path( ?EXCLUSIVEMAXIMUM
+                                            , get_current_schema(State)
+                                            ),
+                 check_maximum(Value, Maximum, ExclusiveMaximum, State);
+               false ->
+                 State
+             end,
+  check_value(Value, Attrs, NewState);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
 check_value( Value
            , [{?EXCLUSIVEMINIMUM, _ExclusiveMinimum} | Attrs]
-           , JsonSchema
+           , State
            ) ->
-  check_value(Value, Attrs, JsonSchema);
+  check_value(Value, Attrs, State);
 %% doesn't really do anything, since this attribute will be handled
 %% by the previous function clause if it's presented in the schema
 check_value( Value
            , [{?EXCLUSIVEMAXIMUM, _ExclusiveMaximum} | Attrs]
-           , JsonSchema
+           , State
            ) ->
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MINITEMS, MinItems} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_min_items(Value, MinItems);
-    false -> ok
+  check_value(Value, Attrs, State);
+check_value(Value, [{?MINITEMS, MinItems} | Attrs], State) ->
+  NewState = case is_array(Value) of
+               true  -> check_min_items(Value, MinItems, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?MAXITEMS, MaxItems} | Attrs], State) ->
+  NewState = case is_array(Value) of
+               true  -> check_max_items(Value, MaxItems, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?UNIQUEITEMS, Uniqueitems} | Attrs], State) ->
+  NewState = case is_array(Value) of
+               true  -> check_unique_items(Value, Uniqueitems, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?PATTERN, Pattern} | Attrs], State) ->
+  NewState = case is_binary(Value) of
+               true  -> check_pattern(Value, Pattern, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?MINLENGTH, MinLength} | Attrs], State) ->
+  NewState = case is_binary(Value) of
+               true  -> check_min_length(Value, MinLength, State);
+               false -> State
   end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MAXITEMS, MaxItems} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_max_items(Value, MaxItems);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?UNIQUEITEMS, Uniqueitems} | Attrs], JsonSchema) ->
-  case is_array(Value) of
-    true  -> check_unique_items(Value, Uniqueitems);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?PATTERN, Pattern} | Attrs], JsonSchema) ->
-  case is_binary(Value) of
-    true  -> check_pattern(Value, Pattern);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MINLENGTH, MinLength} | Attrs], JsonSchema) ->
-  case is_binary(Value) of
-    true  -> check_min_length(Value, MinLength);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?MAXLENGTH, MaxLength} | Attrs], JsonSchema) ->
-  case is_binary(Value) of
-    true  -> check_max_length(Value, MaxLength);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?ENUM, Enum} | Attrs], JsonSchema) ->
-  check_enum(Value, Enum),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?FORMAT, Format} | Attrs], JsonSchema) ->
-  check_format(Value, Format),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?DIVISIBLEBY, DivisibleBy} | Attrs], JsonSchema) ->
-  case is_number(Value) of
-    true  -> check_divisible_by(Value, DivisibleBy, JsonSchema);
-    false -> ok
-  end,
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?DISALLOW, Disallow} | Attrs], JsonSchema) ->
-  check_disallow(Value, Disallow, JsonSchema),
-  check_value(Value, Attrs, JsonSchema);
-check_value(Value, [{?EXTENDS, Extends} | Attrs], JsonSchema) ->
-  check_extends(Value, Extends),
-  check_value(Value, Attrs, JsonSchema);
-check_value(_Value, [], _JsonSchema) ->
-  ok;
-check_value(Value, [_Attr | Attrs], JsonSchema) ->
-  check_value(Value, Attrs, JsonSchema).
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?MAXLENGTH, MaxLength} | Attrs], State) ->
+  NewState = case is_binary(Value) of
+               true  -> check_max_length(Value, MaxLength, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?ENUM, Enum} | Attrs], State) ->
+  NewState = check_enum(Value, Enum, State),
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?FORMAT, Format} | Attrs], State) ->
+  NewState = check_format(Value, Format, State),
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?DIVISIBLEBY, DivisibleBy} | Attrs], State) ->
+  NewState = case is_number(Value) of
+               true  -> check_divisible_by(Value, DivisibleBy, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?DISALLOW, Disallow} | Attrs], State) ->
+  NewState = check_disallow(Value, Disallow, State),
+  check_value(Value, Attrs, NewState);
+check_value(Value, [{?EXTENDS, Extends} | Attrs], State) ->
+  NewState = check_extends(Value, Extends, State),
+  check_value(Value, Attrs, NewState);
+check_value(_Value, [], State) ->
+  State;
+check_value(Value, [_Attr | Attrs], State) ->
+  check_value(Value, Attrs, State).
 
 %% @doc 5.1.  type
 %%
@@ -304,76 +354,53 @@ check_value(Value, [_Attr | Attrs], JsonSchema) ->
 %%
 %%  {"type":["string","number"]}
 %% @private
-check_type(Value, ?STRING, JsonSchema) ->
-  case is_binary(Value) of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_string, JsonSchema})
-  end;
-check_type(Value, ?NUMBER, JsonSchema) ->
-  case is_number(Value) of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_number, JsonSchema})
-  end;
-check_type(Value, ?INTEGER, JsonSchema) ->
-  case is_integer(Value) of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_integer, JsonSchema})
-  end;
-check_type(Value, ?BOOLEAN, JsonSchema) ->
-  case is_boolean(Value) of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_boolean, JsonSchema})
-  end;
-check_type(Value, ?OBJECT, JsonSchema) ->
-  case is_json_object(Value) of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_object, JsonSchema})
-  end;
-check_type(Value, ?ARRAY, JsonSchema) ->
-  case is_array(Value) of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_array, JsonSchema})
-  end;
-check_type(Value, ?NULL, JsonSchema) ->
-  case Value of
-    null -> ok;
-    _    -> throw({data_invalid, Value, not_null, JsonSchema})
-  end;
-check_type(_Value, ?ANY, _JsonSchema) ->
-  ok;
-check_type(Value, UnionType, JsonSchema) ->
+check_type(Value, Type, State) ->
+  case is_type_valid(Value, Type) of
+    true  -> State;
+    false -> wrong_type(Value, State)
+  end.
+
+is_type_valid(Value, ?STRING)   -> is_binary(Value);
+is_type_valid(Value, ?NUMBER)   -> is_number(Value);
+is_type_valid(Value, ?INTEGER)  -> is_integer(Value);
+is_type_valid(Value, ?BOOLEAN)  -> is_boolean(Value);
+is_type_valid(Value, ?OBJECT)   -> is_json_object(Value);
+is_type_valid(Value, ?ARRAY)    -> is_array(Value);
+is_type_valid(Value, ?NULL)     -> is_null(Value);
+is_type_valid(_Value, ?ANY)     -> true;
+is_type_valid(Value, UnionType) ->
   case is_array(UnionType) of
-    true  -> check_union_type(Value, UnionType, JsonSchema);
-    false -> ok
+    true  -> check_union_type(Value, UnionType);
+    false -> true
   end.
 
 %% @private
-check_union_type(Value, UnionType, JsonSchema) ->
-  IsValid = lists:any( fun(Type) ->
-                           try
-                             case is_json_object(Type) of
-                               true ->
-                                 %% case when there's a schema in the array,
-                                 %% then we need to validate against
-                                 %% that schema
-                                 ok =:= check_value( Value
-                                                   , unwrap(Type)
-                                                   , Type
-                                                   );
-                               false ->
-                                 ok =:= check_type(Value, Type, JsonSchema)
-                             end
-                           catch
-                             throw:{data_invalid, _, _, _} -> false;
-                             throw:{schema_invalid, _, _}  -> false
-                           end
-                       end
-                     , UnionType
-                     ),
-  case IsValid of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_correct_type, JsonSchema})
-  end.
+check_union_type(Value, UnionType) ->
+  lists:any( fun(Type) ->
+                 try
+                   case is_json_object(Type) of
+                     true  ->
+                       %% case when there's a schema in the array,
+                       %% then we need to validate against
+                       %% that schema
+                       NewState = new_state(Type, []),
+                       _ = check_value(Value, unwrap(Type), NewState),
+                       true;
+                     false ->
+                       is_type_valid(Value, Type)
+                   end
+                 catch
+                   throw:[{?data_invalid, _, _, _} | _] -> false;
+                   throw:[{?schema_invalid, _, _} | _]  -> false
+                 end
+             end
+           , UnionType
+           ).
+
+%% @private
+wrong_type(Value, State) ->
+  Error = {?data_invalid, get_current_schema(State), ?wrong_type, Value},
+  handle_error(Error, State).
 
 %% @doc 5.2.  properties
 %%
@@ -387,32 +414,42 @@ check_union_type(Value, UnionType, JsonSchema) ->
 %% the property definition.  Properties are considered unordered, the
 %% order of the instance properties MAY be in any order.
 %% @private
-check_properties(Value, Properties) ->
-  lists:foreach( fun({PropertyName, PropertySchema}) ->
-                     case get_path(PropertyName, Value) of
-                       [] ->
+check_properties(Value, Properties, State) ->
+  TmpState
+    = lists:foldl( fun({PropertyName, PropertySchema}, CurrentState) ->
+                       case get_path(PropertyName, Value) of
+                         [] ->
 %% @doc 5.7.  required
 %%
 %% This attribute indicates if the instance must have a value, and not
 %% be undefined.  This is false by default, making the instance
 %% optional.
 %% @end
-                         case get_path(?REQUIRED, PropertySchema) of
-                           true  -> throw({ data_invalid
-                                          , Value
-                                          , missing_required_property
-                                          , PropertyName
-                                          });
-                           _     -> ok
-                         end;
-                       Property -> check_value( Property
-                                               , unwrap(PropertySchema)
-                                               , PropertySchema
-                                               )
-                     end
-                 end
-               , Properties
-               ).
+                           case get_path(?REQUIRED, PropertySchema) of
+                             true ->
+                               Error = { ?data_invalid
+                                       , get_current_schema(CurrentState)
+                                       , ?missing_required_property
+                                       , Value
+                                       },
+                               handle_error(Error, CurrentState);
+                             _    ->
+                               CurrentState
+                           end;
+                         Property ->
+                           NewState = set_current_schema( CurrentState
+                                                        , PropertySchema
+                                                        ),
+                           check_value( Property
+                                      , unwrap(PropertySchema)
+                                      , NewState
+                                      )
+                       end
+                   end
+                 , State
+                 , Properties
+                 ),
+  set_current_schema(TmpState, get_current_schema(State)).
 
 %% @doc 5.3.  patternProperties
 %%
@@ -424,17 +461,26 @@ check_properties(Value, Properties) ->
 %% the instance's property MUST be valid against the pattern name's
 %% schema value.
 %% @private
-check_pattern_properties(Value, PatternProperties) ->
-  [ check_match({PropertyName, PropertyValue}, {Pattern, Schema})
-   || {Pattern, Schema} <- unwrap(PatternProperties),
-      {PropertyName, PropertyValue} <- unwrap(Value)],
-  ok.
+check_pattern_properties(Value, PatternProperties, State) ->
+  P1P2 = [{P1, P2} || P1 <- unwrap(Value), P2  <- unwrap(PatternProperties)],
+  TmpState = lists:foldl( fun({Property, Pattern}, CurrentState) ->
+                              check_match(Property, Pattern, CurrentState)
+                          end
+                        , State
+                        , P1P2
+                        ),
+  set_current_schema(TmpState, get_current_schema(State)).
 
 %% @private
-check_match({PropertyName, PropertyValue}, {Pattern, Schema}) ->
+check_match({PropertyName, PropertyValue}, {Pattern, Schema}, State) ->
   case re:run(PropertyName, Pattern, [{capture, none}]) of
-    match   -> check_value(PropertyValue, unwrap(Schema), Schema);
-    nomatch -> ok
+    match   ->
+      check_value( PropertyValue
+                 , unwrap(Schema)
+                 , set_current_schema(State, Schema)
+                 );
+    nomatch ->
+      State
   end.
 
 %% @doc 5.4.  additionalProperties
@@ -446,32 +492,39 @@ check_match({PropertyName, PropertyValue}, {Pattern, Schema}) ->
 %% the schema.  The default value is an empty schema which allows any
 %% value for additional properties.
 %% @private
-check_additional_properties(Value, false, JsonSchema) ->
+check_additional_properties(Value, false, State) ->
+  JsonSchema        = get_current_schema(State),
   Properties        = get_path(?PROPERTIES, JsonSchema),
   PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
   case get_additional_properties(Value, Properties, PatternProperties) of
-    []      -> ok;
-    _Extras -> throw({ data_invalid
-                     , {Value, _Extras}
-                     , no_extra_properties_allowed
-                     , JsonSchema
-                     })
+    []      -> State;
+    _Extras ->
+      Error = {?data_invalid, JsonSchema, ?no_extra_properties_allowed, Value},
+      handle_error(Error, State)
   end;
-check_additional_properties(_Value, true, _JsonSchema) ->
-  ok;
-check_additional_properties(Value, AdditionalProperties, JsonSchema) ->
+check_additional_properties(_Value, true, State) ->
+  State;
+check_additional_properties(Value, AdditionalProperties, State) ->
+  JsonSchema        = get_current_schema(State),
   Properties        = get_path(?PROPERTIES, JsonSchema),
   PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
   case get_additional_properties(Value, Properties, PatternProperties) of
-    []     -> ok;
-    Extras -> lists:foreach( fun(Extra) ->
-                                 check_value( Extra
-                                            , unwrap(AdditionalProperties)
-                                            , AdditionalProperties
-                                            )
-                             end
-                           , Extras
-                           )
+    []     -> State;
+    Extras ->
+      TmpState
+        = lists:foldl( fun(Extra, CurrentState) ->
+                           NewState = set_current_schema( CurrentState
+                                                        , AdditionalProperties
+                                                        ),
+                           check_value( Extra
+                                      , unwrap(AdditionalProperties)
+                                      , NewState
+                                      )
+                       end
+                     , State
+                     , Extras
+                     ),
+      set_current_schema(TmpState, JsonSchema)
   end.
 
 %% @private
@@ -516,30 +569,33 @@ filter_extra_names(Pattern, ExtraNames) ->
 %% (Section 5.6) attribute using the same rules as
 %% "additionalProperties" (Section 5.4) for objects.
 %% @private
-check_items(Value, Items, JsonSchema) ->
+check_items(Value, Items, State) ->
   case is_json_object(Items) of
-    true  ->
-      lists:foreach( fun(Item) ->
-                         check_value(Item, unwrap(Items), Items)
-                     end
-                   , Value
-                   );
-    false ->
-      case is_list(Items) of
-        true  -> check_items_array(Value, Items, JsonSchema);
-        false -> throw({ schema_invalid
-                       , Items
-                       , wrong_type_items
-                       })
-      end
+    true ->
+      TmpState = lists:foldl( fun(Item, CurrentState) ->
+                                  check_value(Item, unwrap(Items), CurrentState)
+                              end
+                            , set_current_schema(State, Items)
+                            , Value
+                            ),
+      set_current_schema(TmpState, get_current_schema(State));
+    false when is_list(Items) ->
+      check_items_array(Value, Items, State);
+    _ ->
+      Error = { ?schema_invalid
+              , get_current_schema(State)
+              , {?wrong_type_items, Items}
+              },
+      handle_error(Error, State)
   end.
 
 %% @private
-check_items_array(Value, Items, JsonSchema) ->
-  Tuples = case length(Value) - length(Items) of
-             0 ->
-               lists:zip(Value, Items);
-             NExtra when NExtra > 0 ->
+check_items_array(Value, Items, State) ->
+  JsonSchema = get_current_schema(State),
+  case length(Value) - length(Items) of
+    0 ->
+      check_items_fun(lists:zip(Value, Items), State);
+    NExtra when NExtra > 0 ->
 %% @doc 5.6.  additionalItems
 %%
 %% This provides a definition for additional items in an array instance
@@ -547,33 +603,34 @@ check_items_array(Value, Items, JsonSchema) ->
 %% to indicate additional items in the array are not allowed, or it can
 %% be a schema that defines the schema of the additional items.
 %% @end
-               case get_path(?ADDITIONALITEMS, JsonSchema) of
-                 [] ->
-                   [];
-                 true ->
-                   [];
-                 false ->
-                   throw({ data_invalid
-                         , Value
-                         , no_extra_items_allowed
-                         , JsonSchema
-                         });
-                 AdditionalItems ->
-                   ExtraSchemas = lists:duplicate(NExtra, AdditionalItems),
-                   lists:zip(Value, lists:append(Items, ExtraSchemas))
-               end;
-             NExtra when NExtra < 0 ->
-               throw({ data_invalid
-                     , Value
-                     , not_enought_items
-                     , JsonSchema
-                     })
-           end,
-  lists:foreach( fun({Item, Schema}) ->
-                     check_value(Item, unwrap(Schema), Schema)
-                 end
-               , Tuples
-               ).
+      case get_path(?ADDITIONALITEMS, JsonSchema) of
+        []    -> State;
+        true  -> State;
+        false ->
+          Error = {?data_invalid, JsonSchema, ?no_extra_items_allowed, Value},
+          handle_error(Error, State);
+        AdditionalItems ->
+          ExtraSchemas = lists:duplicate(NExtra, AdditionalItems),
+          Tuples = lists:zip(Value, lists:append(Items, ExtraSchemas)),
+          check_items_fun(Tuples, State)
+      end;
+    NExtra when NExtra < 0 ->
+      Error = {?data_invalid, JsonSchema, ?not_enought_items, Value},
+      handle_error(Error, State)
+  end.
+
+%% @private
+check_items_fun(Tuples, State) ->
+  TmpState = lists:foldl( fun({Item, Schema}, CurrentState) ->
+                              NewState = set_current_schema( CurrentState
+                                                           , Schema
+                                                           ),
+                              check_value(Item, unwrap(Schema), NewState)
+                          end
+                        , State
+                        , Tuples
+                        ),
+  set_current_schema(TmpState, get_current_schema(State)).
 
 %% @doc 5.8.  dependencies
 %%
@@ -595,53 +652,66 @@ check_items_array(Value, Items, JsonSchema) ->
 %%    instance object MUST be valid against the schema.</dd>
 %% </dl>
 %% @private
-check_dependencies(Value, Dependencies) ->
-  lists:foreach( fun({DependencyName, DependencyValue}) ->
-                     case get_path(DependencyName, Value) of
-                       [] -> ok;
-                       _  -> check_dependency_value(Value, DependencyValue)
-                     end
-                 end
-               , unwrap(Dependencies)
-               ).
+check_dependencies(Value, Dependencies, State) ->
+  lists:foldl( fun({DependencyName, DependencyValue}, CurrentState) ->
+                   case get_path(DependencyName, Value) of
+                     [] -> CurrentState;
+                     _  -> check_dependency_value( Value
+                                                 , DependencyValue
+                                                 , CurrentState
+                                                 )
+                   end
+               end
+             , State
+             , unwrap(Dependencies)
+             ).
 
 %% @private
-check_dependency_value(Value, Dependency) when is_binary(Dependency) ->
+check_dependency_value(Value, Dependency, State) when is_binary(Dependency) ->
   case get_path(Dependency, Value) of
-    [] -> throw({ data_invalid
-                , Value
-                , missing_dependency
-                , Dependency
-                });
-    _  -> ok
+    [] ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , {?missing_dependency, Dependency}
+              , Value
+              },
+      handle_error(Error, State);
+    _  ->
+      State
   end;
-check_dependency_value(Value, Dependency) ->
+check_dependency_value(Value, Dependency, State) ->
   case is_json_object(Dependency) of
-    true  -> check_value(Value, unwrap(Dependency), Dependency);
-    false ->
-      case is_list(Dependency) of
-        true  -> check_dependency_array(Value, Dependency);
-        false -> throw({ schema_invalid
-                       , Dependency
-                       , wrong_type_dependency
-                       })
-      end
+    true ->
+      TmpState = check_value( Value
+                            , unwrap(Dependency)
+                            , set_current_schema(State, Dependency)
+                            ),
+      set_current_schema(TmpState, get_current_schema(State));
+    false when is_list(Dependency) ->
+      check_dependency_array(Value, Dependency, State);
+    _ ->
+      Error = { ?schema_invalid
+              , get_current_schema(State)
+              , {?wrong_type_dependency, Dependency}
+              },
+      handle_error(Error, State)
   end.
 
 %% @private
-check_dependency_array(Value, Dependency) ->
-  lists:foreach( fun(PropertyName) ->
-                     check_dependency_value(Value, PropertyName)
-                 end
-               , Dependency
-               ).
+check_dependency_array(Value, Dependency, State) ->
+  lists:foldl( fun(PropertyName, CurrentState) ->
+                   check_dependency_value(Value, PropertyName, CurrentState)
+               end
+             , State
+             , Dependency
+             ).
 
 %% @doc 5.9.  minimum
 %%
 %% This attribute defines the minimum value of the instance property
 %% when the type of the instance value is a number.
 %% @private
-check_minimum(Value, Minimum, ExclusiveMinimum) ->
+check_minimum(Value, Minimum, ExclusiveMinimum, State) ->
 %% @doc 5.11.  exclusiveMinimum
 %%
 %% This attribute indicates if the value of the instance (if the
@@ -654,12 +724,14 @@ check_minimum(Value, Minimum, ExclusiveMinimum) ->
              _    -> Value >= Minimum
            end,
   case Result of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_in_range
-                   , {{minimum, Minimum}, {exclusive, ExclusiveMinimum}}
-                   })
+    true  -> State;
+    false ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , ?not_in_range
+              , Value
+              },
+      handle_error(Error, State)
   end.
 
 %%% @doc 5.10.  maximum
@@ -667,7 +739,7 @@ check_minimum(Value, Minimum, ExclusiveMinimum) ->
 %% This attribute defines the maximum value of the instance property
 %% when the type of the instance value is a number.
 %% @private
-check_maximum(Value, Maximum, ExclusiveMaximum) ->
+check_maximum(Value, Maximum, ExclusiveMaximum, State) ->
 %% @doc 5.12.  exclusiveMaximum
 %%
 %% This attribute indicates if the value of the instance (if the
@@ -680,12 +752,14 @@ check_maximum(Value, Maximum, ExclusiveMaximum) ->
              _    -> Value =< Maximum
            end,
   case Result of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_in_range
-                   , {{maximum, Maximum}, {exclusive, ExclusiveMaximum}}
-                   })
+    true  -> State;
+    false ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , ?not_in_range
+              , Value
+              },
+      handle_error(Error, State)
   end.
 
 %% @doc 5.13.  minItems
@@ -693,28 +767,30 @@ check_maximum(Value, Maximum, ExclusiveMaximum) ->
 %% This attribute defines the minimum number of values in an array when
 %% the array is the instance value.
 %% @private
-check_min_items(Value, MinItems) when length(Value) >= MinItems ->
-  ok;
-check_min_items(Value, MinItems) ->
-  throw({ data_invalid
-        , Value
-        , not_correct_size
-        , {min_items, MinItems}
-        }).
+check_min_items(Value, MinItems, State) when length(Value) >= MinItems ->
+  State;
+check_min_items(Value, _MinItems, State) ->
+  Error = { ?data_invalid
+          , get_current_schema(State)
+          , ?wrong_size
+          , Value
+          },
+  handle_error(Error, State).
 
 %% @doc 5.14.  maxItems
 %%
 %% This attribute defines the maximum number of values in an array when
 %% the array is the instance value.
 %% @private
-check_max_items(Value, MaxItems) when length(Value) =< MaxItems ->
-  ok;
-check_max_items(Value, MaxItems) ->
-  throw({ data_invalid
-        , Value
-        , not_correct_size
-        , {max_items, MaxItems}
-        }).
+check_max_items(Value, MaxItems, State) when length(Value) =< MaxItems ->
+  State;
+check_max_items(Value, _MaxItems, State) ->
+  Error = { ?data_invalid
+          , get_current_schema(State)
+          , ?wrong_size
+          , Value
+          },
+  handle_error(Error, State).
 
 %% @doc 5.15.  uniqueItems
 %%
@@ -737,30 +813,33 @@ check_max_items(Value, MaxItems) ->
 %%       object.</li>
 %% </ul>
 %% @private
-check_unique_items(Value, true = Uniqueitems) ->
-  lists:foldl( fun(_Item, []) ->
-                   ok;
-                  (Item, RestItems) ->
-                   lists:foreach( fun(ItemFromRest) ->
-                                      case is_equal(Item, ItemFromRest) of
-                                        true  -> throw({ data_invalid
-                                                       , Value
-                                                       , {Item, not_unique}
-                                                       , { uniqueItems
-                                                         , Uniqueitems
-                                                         }
-                                                       });
-                                        false -> ok
-                                      end
-                                  end
-                                , RestItems
-                                ),
-                   tl(RestItems)
-               end
-             , tl(Value)
-             , Value
-             ),
-  ok.
+check_unique_items(Value, true, State) ->
+  try
+    lists:foldl( fun(_Item, []) ->
+                     ok;
+                    (Item, RestItems) ->
+                     lists:foreach( fun(ItemFromRest) ->
+                                        case is_equal(Item, ItemFromRest) of
+                                          true  ->
+                                            throw({ ?data_invalid
+                                                  , get_current_schema(State)
+                                                  , {?not_unique, Item}
+                                                  , Value
+                                                  });
+                                          false -> ok
+                                        end
+                                    end
+                                  , RestItems
+                                  ),
+                     tl(RestItems)
+                 end
+               , tl(Value)
+               , Value
+               ),
+    State
+  catch
+    throw:Error -> handle_error(Error, State)
+  end.
 
 %% @doc 5.16.  pattern
 %% When the instance value is a string, this provides a regular
@@ -768,14 +847,16 @@ check_unique_items(Value, true = Uniqueitems) ->
 %% Regular expressions SHOULD follow the regular expression
 %% specification from ECMA 262/Perl 5
 %% @private
-check_pattern(Value, Pattern) ->
+check_pattern(Value, Pattern, State) ->
   case re:run(Value, Pattern, [{capture, none}]) of
-    match   -> ok;
-    nomatch -> throw({ data_invalid
-                     , Value
-                     , no_match
-                     , Pattern
-                     })
+    match   -> State;
+    nomatch ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , ?no_match
+              , Value
+              },
+      handle_error(Error, State)
   end.
 
 %% @doc 5.17.  minLength
@@ -783,14 +864,16 @@ check_pattern(Value, Pattern) ->
 %% When the instance value is a string, this defines the minimum length
 %% of the string.
 %% @private
-check_min_length(Value, MinLength) ->
+check_min_length(Value, MinLength, State) ->
   case length(unicode:characters_to_list(Value)) >= MinLength of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_correct_length
-                   , {min_length, MinLength}
-                   })
+    true  -> State;
+    false ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , ?wrong_length
+              , Value
+              },
+      handle_error(Error, State)
   end.
 
 %% @doc 5.18.  maxLength
@@ -798,14 +881,16 @@ check_min_length(Value, MinLength) ->
 %% When the instance value is a string, this defines the maximum length
 %% of the string.
 %% @private
-check_max_length(Value, MaxLength) ->
+check_max_length(Value, MaxLength, State) ->
   case length(unicode:characters_to_list(Value)) =< MaxLength of
-    true  -> ok;
-    false -> throw({ data_invalid
-                   , Value
-                   , not_correct_length
-                   , {max_length, MaxLength}
-                   })
+    true  -> State;
+    false ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , ?wrong_length
+              , Value
+              },
+      handle_error(Error, State)
   end.
 
 %% @doc 5.19.  enum
@@ -818,19 +903,55 @@ check_max_length(Value, MaxLength) ->
 %% of enum values uses the same algorithm as defined in "uniqueItems"
 %% (Section 5.15).
 %% @private
-check_enum(Value, Enum) ->
+check_enum(Value, Enum, State) ->
   IsValid = lists:any( fun(ExpectedValue) ->
                            is_equal(Value, ExpectedValue)
                        end
                      , Enum
                      ),
   case IsValid of
-    true  -> ok;
-    false -> throw({data_invalid, Value, not_in_enum, Enum})
+    true  -> State;
+    false ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , ?not_in_range
+              , Value
+              },
+      handle_error(Error, State)
   end.
 
 %% TODO:
-check_format(_Value, _Format) -> ok.
+check_format(_Value, _Format, State) ->
+%% 'date-time': /^\d{4}-(?:0[0-9]{1}|1[0-2]{1})-[0-9]{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+%% 'date': /^\d{4}-(?:0[0-9]{1}|1[0-2]{1})-[0-9]{2}$/,
+%% 'time': /^\d{2}:\d{2}:\d{2}$/,
+
+%% 'email': /^(?:[\w\!\#\$\%\&\'\*\+\-\/\=\?\^\`\{\|\}\~]+\.)*[\w\!\#\$\%\&\'\*\+\-\/\=\?\^\`\{\|\}\~]+@(?:(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-](?!\.)){0,61}[a-zA-Z0-9]?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9\-](?!$)){0,61}[a-zA-Z0-9]?)|(?:\[(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\]))$/,
+%% 'ip-address': /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
+%% 'ipv6': /^\s*((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?\s*$/,
+%% 'uri': /^[a-zA-Z][a-zA-Z0-9+-.]*:[^\s]*$/,
+
+%% 'color': /(#?([0-9A-Fa-f]{3,6})\b)|(aqua)|(black)|(blue)|(fuchsia)|(gray)|(green)|(lime)|(maroon)|(navy)|(olive)|(orange)|(purple)|(red)|(silver)|(teal)|(white)|(yellow)|(rgb\(\s*\b([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\b\s*,\s*\b([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\b\s*,\s*\b([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\b\s*\))|(rgb\(\s*(\d?\d%|100%)+\s*,\s*(\d?\d%|100%)+\s*,\s*(\d?\d%|100%)+\s*\))/,
+
+%% 'host-name': /^(([a-zA-Z]|[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$/,
+
+%% 'alpha': /^[a-zA-Z]+$/,
+%% 'alphanumeric': /^[a-zA-Z0-9]+$/,
+%% 'utc-millisec': function (input) {
+%%   return (typeof input === 'string') && parseFloat(input) === parseInt(input, 10) && !isNaN(input);
+%% },
+%% 'regex': function (input) {
+%%   var result = true;
+%%   try {
+%%     new RegExp(input);
+%%   } catch (e) {
+%%     result = false;
+%%   }
+%%   return result;
+%% },
+%% 'style': /\s*(.+?):\s*([^;]+);?/g,
+%% 'phone': /^\+(?:[0-9] ?){6,14}[0-9]$/
+  State.
 
 %% @doc 5.24.  divisibleBy
 %%
@@ -838,20 +959,21 @@ check_format(_Value, _Format) -> ok.
 %% divisible by with no remainder (the result of the division must be an
 %% integer.)  The value of this attribute SHOULD NOT be 0.
 %% @private
-check_divisible_by(_Value, 0, JsonSchema) ->
-  throw({ schema_invalid
-        , JsonSchema
-        , {divide_by, 0}
-        });
-check_divisible_by(Value, DivisibleBy, _JsonSchema) ->
+check_divisible_by(Value, 0, State) ->
+  Error = {?data_invalid, get_current_schema(State), 'not_divisible', Value},
+  handle_error(Error, State);
+check_divisible_by(Value, DivisibleBy, State) ->
   Result = (Value / DivisibleBy - trunc(Value / DivisibleBy)) * DivisibleBy,
   case Result of
-    0.0 -> ok;
-    _   -> throw({ data_invalid
-                 , Value
-                 , not_divisible_by
-                 , DivisibleBy
-                 })
+    0.0 ->
+      State;
+    _   ->
+      Error = { ?data_invalid
+              , get_current_schema(State)
+              , 'not_divisible'
+              , Value
+              },
+      handle_error(Error, State)
   end.
 
 %% @doc 5.25.  disallow
@@ -861,11 +983,13 @@ check_divisible_by(Value, DivisibleBy, _JsonSchema) ->
 %% instance matches any type or schema in the array, then this instance
 %% is not valid.
 %% @private
-check_disallow(Value, Disallow, JsonSchema) ->
-  try check_type(Value, Disallow, []) of
-      ok -> throw({data_invalid, Value, disallowed, JsonSchema})
+check_disallow(Value, Disallow, State) ->
+  try check_type(Value, Disallow, new_state(Disallow, [])) of
+      _ ->
+      Error = {?data_invalid, get_current_schema(State), ?not_allowed, Value},
+      handle_error(Error, State)
   catch
-    throw:{data_invalid, _, _, _} -> ok
+    throw:[{?data_invalid, _, _, _} | _] -> State
   end.
 
 %% @doc 5.26.  extends
@@ -879,24 +1003,25 @@ check_disallow(Value, Disallow, JsonSchema) ->
 %% another schema MAY define additional attributes, constrain existing
 %% attributes, or add other constraints.
 %% @private
-check_extends(Value, Extends) ->
+check_extends(Value, Extends, State) ->
   case is_json_object(Extends) of
     true  ->
-      check_value(Value, unwrap(Extends), Extends);
+      check_value(Value, unwrap(Extends), set_current_schema(State, Extends));
     false ->
       case is_list(Extends) of
-        true  -> check_extends_array(Value, Extends);
-        false -> ok %% TODO: implement handling of $ref
+        true  -> check_extends_array(Value, Extends, State);
+        false -> State %% TODO: implement handling of $ref
       end
   end.
 
 %% @private
-check_extends_array(Value, Extends) ->
-  lists:foreach( fun(SchemaKey) ->
-                     check_extends(Value, SchemaKey)
-                 end
-               , Extends
-               ).
+check_extends_array(Value, Extends, State) ->
+  lists:foldl( fun(SchemaKey, CurrentState) ->
+                   check_extends(Value, SchemaKey, CurrentState)
+               end
+             , State
+             , Extends
+             ).
 
 %%=============================================================================
 %% @doc Returns `true' if given values (instance) are equal, otherwise `false'
@@ -962,6 +1087,66 @@ compare_properties(Value1, Value2) ->
 
 %%=============================================================================
 %% @private
+new_state(JsonSchema, Options) ->
+  ErrorHandler  = proplists:get_value( error_handler
+                                     , Options
+                                     , fun default_error_handler/3
+                                     ),
+  AllowedErrors = proplists:get_value( allowed_errors
+                                     , Options
+                                     , 0
+                                     ),
+  #state{ current_schema  = JsonSchema
+        , original_schema = JsonSchema
+        , allowed_errors  = AllowedErrors
+        , error_list      = []
+        , error_handler   = ErrorHandler
+        }.
+
+%% @private
+get_current_schema(#state{current_schema = CurrentSchema}) ->
+  CurrentSchema.
+
+%% @private
+set_current_schema(State, NewSchema) ->
+  State#state{current_schema = NewSchema}.
+
+%% @private
+%% get_original_schema(#state{original_schema = OriginalSchema}) ->
+%%   OriginalSchema.
+
+%% @private
+get_error_handler(#state{error_handler = ErrorHandler}) ->
+  ErrorHandler.
+
+%% @private
+get_error_list(#state{error_list = ErrorList}) ->
+  ErrorList.
+
+%% @private
+set_error_list(State, ErrorList) ->
+  State#state{error_list = ErrorList}.
+
+%% @private
+get_allowed_errors(#state{allowed_errors = AllowedErrors}) ->
+  AllowedErrors.
+
+%% @private
+handle_error(Error, State) ->
+  ErrorHandler  = get_error_handler(State),
+  ErrorList     = get_error_list(State),
+  AllowedErrors = get_allowed_errors(State),
+  set_error_list(State, ErrorHandler(Error, ErrorList, AllowedErrors)).
+
+%% @private
+default_error_handler(Error, ErrorList, AllowedErrors) ->
+  case AllowedErrors > length(ErrorList) orelse AllowedErrors =:= 'infinity' of
+    true  -> [Error | ErrorList];
+    false -> throw([Error | ErrorList])
+  end.
+
+%%=============================================================================
+%% @private
 get_path(Key, Schema) ->
   jesse_json_path:path(Key, Schema).
 
@@ -975,6 +1160,8 @@ unwrap(Value) ->
 is_array(Value) when is_list(Value) -> not is_json_object(Value);
 is_array(_)                         -> false.
 
+is_null(null)   -> true;
+is_null(_Value) -> false.
 
 %%% Local Variables:
 %%% erlang-indent-level: 2

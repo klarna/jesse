@@ -13,9 +13,6 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
-%% @copyright 2013 Klarna AB
-%% @author Alexander Dergachev <alexander.dergachev@klarna.com>
-%%
 %% @doc Schema definitions cache handling.
 %%
 %% All the schema definitions are stored in an ETS table for quick access during
