@@ -46,8 +46,8 @@ ok
 5> Json2 = jiffy:decode(<<"[1, \"x\"]">>).
 [1,<<"x">>]
 6> jesse:validate(some_key, Json2).
-{error,{data_invalid,<<"x">>,not_integer,
-                     {[{<<"type">>,<<"integer">>}]}}}"]")
+{error,[{data_invalid,{[{<<"type">>,<<"integer">>}]},
+                      wrong_type,<<"x">>}]}
 ```
 
 (using a callback)
@@ -55,19 +55,18 @@ ok
 ```erlang
 1> jesse:add_schema(some_key,
 1>                  <<"{\"uniqueItems\": true}">>,
-1>                  fun jiffy:decode/1).
+1>                  [{parser_fun, fun jiffy:decode/1}]).
 ok
 2> jesse:validate(some_key,
 2>                <<"[1, 2]">>,
-2>                fun jiffy:decode/1).
-{ok,[1,2]}
+2>                [{parser_fun, fun jiffy:decode/1}]).
+{ok,[1, 2]}
 3> jesse:validate(some_key,
 3>                <<"[{\"foo\": \"bar\"}, {\"foo\": \"bar\"}] ">>,
-3>                fun jiffy:decode/1).
-{error,{data_invalid,[{[{<<"foo">>,<<"bar">>}]},
-                      {[{<<"foo">>,<<"bar">>}]}],
-                     {{[{<<"foo">>,<<"bar">>}]},not_unique},
-                     {uniqueItems,true}}}
+3>                [{parser_fun, fun jiffy:decode/1}]).
+{error,[{data_invalid,{[{<<"uniqueItems">>,true}]},
+                      {not_unique,{[{<<"foo">>,<<"bar">>}]}},
+                      [{[{<<"foo">>,<<"bar">>}]},{[{<<"foo">>,<<"bar">>}]}]}]}
 ```
 
 * Call jesse with schema definition in place (do not use internal storage)
@@ -84,7 +83,8 @@ ok
 4> Json2 = jiffy:decode(<<"\"abc\"">>).
 <<"abc">>
 5> jesse:validate_with_schema(Schema, Json2).
-{error,{data_invalid,<<"abc">>,no_match,<<"^a*$">>}}
+{error,[{data_invalid,{[{<<"pattern">>,<<"^a*$">>}]},
+                      no_match,<<"abc">>}]}
 ```
 
 (using a callback)
@@ -94,13 +94,87 @@ ok
 <<"{\"patternProperties\": {\"f.*o\": {\"type\": \"integer\"}}}">>
 2> jesse:validate_with_schema(Schema,
 2>                            <<"{\"foo\": 1, \"foooooo\" : 2}">>,
-2>                            fun jiffy:decode/1).
+2>                            [{parser_fun, fun jiffy:decode/1}]).
 {ok,{[{<<"foo">>,1},{<<"foooooo">>,2}]}}
 3> jesse:validate_with_schema(Schema,
 3>                            <<"{\"foo\": \"bar\", \"fooooo\": 2}">>,
-3>                            fun jiffy:decode/1).
-{error,{data_invalid,<<"bar">>,not_integer,
-                     {[{<<"type">>,<<"integer">>}]}}}""}]""}")
+3>                            [{parser_fun, fun jiffy:decode/1}]).
+{error,[{data_invalid,{[{<<"type">>,<<"integer">>}]},
+                      wrong_type,<<"bar">>}]}
+```
+
+* Since 0.4.0 it's possible to say jesse to collect errors, and not stop
+  immediately when it finds an error in the given json:
+
+```erlang
+1> Schema = <<"{\"properties\": {\"a\": {\"type\": \"integer\"}, \"b\": {\"type\": \"string\"}, \"c\": {\"type\": \"boolean\"}}}">>.
+<<"{\"properties\": {\"a\": {\"type\": \"integer\"}, \"b\": {\"type\": \"string\"}, \"c\": {\"type\": \"boolean\"}}}">>
+2> jesse:validate_with_schema(Schema,
+2>                            <<"{\"a\": 1, \"b\": \"b\", \"c\": true}">>,
+2>                            [{parser_fun, fun jiffy:decode/1}]).
+{ok,{[{<<"a">>,1},{<<"b">>,<<"b">>},{<<"c">>,true}]}}
+```
+
+now let's change the value of the field "b" to an integer
+
+```erlang
+3> jesse:validate_with_schema(Schema,
+3>                            <<"{\"a\": 1, \"b\": 2, \"c\": true}">>,
+3>                            [{parser_fun, fun jiffy:decode/1}]).
+{error,[{data_invalid,{[{<<"type">>,<<"string">>}]},
+                      wrong_type,2}]}
+```
+
+works as expected, but let's change the value of the field "c" as well
+
+```erlang
+4> jesse:validate_with_schema(Schema,
+4>                            <<"{\"a\": 1, \"b\": 2, \"c\": 3}">>,
+4>                            [{parser_fun, fun jiffy:decode/1}]).
+{error,[{data_invalid,{[{<<"type">>,<<"string">>}]},
+                      wrong_type,2}]}
+```
+
+still works as expected, jesse stops validating as soon as finds an error.
+let's use the 'allowed_errors' option, and set it to 1
+
+```erlang
+5> jesse:validate_with_schema(Schema,
+5>                            <<"{\"a\": 1, \"b\": 2, \"c\": 3}">>,
+5>                            [{parser_fun, fun jiffy:decode/1},
+5>                             {allowed_errors, 1}]).
+{error,[{data_invalid,{[{<<"type">>,<<"boolean">>}]},
+                      wrong_type,3},
+        {data_invalid,{[{<<"type">>,<<"string">>}]},wrong_type,2}]}
+```
+
+now we got a list of two errors. let's now change the value of the field "a"
+to a boolean
+
+```erlang
+6> jesse:validate_with_schema(Schema,
+6>                            <<"{\"a\": true, \"b\": 2, \"c\": 3}">>,
+6>                            [{parser_fun, fun jiffy:decode/1},
+6>                             {allowed_errors, 1}]).
+{error,[{data_invalid,{[{<<"type">>,<<"string">>}]},
+                      wrong_type,2},
+        {data_invalid,{[{<<"type">>,<<"integer">>}]},
+                      wrong_type,true}]}
+```
+
+we stil got only two errors. let's try using 'infinity' as the argument
+for the 'allowed_errors' option
+
+```erlang
+7> jesse:validate_with_schema(Schema,
+7>                            <<"{\"a\": true, \"b\": 2, \"c\": 3}">>,
+7>                            [{parser_fun, fun jiffy:decode/1},
+7>                             {allowed_errors, infinity}]).
+{error,[{data_invalid,{[{<<"type">>,<<"boolean">>}]},
+                      wrong_type,3},
+        {data_invalid,{[{<<"type">>,<<"string">>}]},wrong_type,2},
+        {data_invalid,{[{<<"type">>,<<"integer">>}]},
+                      wrong_type,true}]}
 ```
 
 Caveats
