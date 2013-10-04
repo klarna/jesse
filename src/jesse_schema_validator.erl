@@ -1111,7 +1111,6 @@ get_current_schema(#state{current_schema = CurrentSchema}) ->
 set_current_schema(State, NewSchema) ->
   State#state{current_schema = NewSchema}.
 
-%% @private
 %% get_original_schema(#state{original_schema = OriginalSchema}) ->
 %%   OriginalSchema.
 
