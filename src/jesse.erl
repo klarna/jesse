@@ -157,7 +157,7 @@ validate(Schema, Data) ->
 %% `Data' is considered to be a binary string, so `parser_fun' is used
 %% to convert the binary string to a supported internal representation of json.
 -spec validate( Schema   :: any()
-              , Data     :: binary()
+              , Data     :: json_term() | binary()
               , Options  :: [{Key :: atom(), Data :: any()}]
               ) -> {ok, json_term()}
                  | error().
