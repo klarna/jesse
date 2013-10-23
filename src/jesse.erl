@@ -153,11 +153,13 @@ validate(Schema, Data) ->
 %% @doc Validates json `Data' against a schema with the same key as `Schema'
 %% in the internal storage, using `Options'. If the given json is valid,
 %% then it is returned to the caller, otherwise an error with an appropriate
-%% error reason is returned. If `parser_fun' option is provided, then
+%% error reason is returned. If the `parser_fun' option is provided, then
 %% `Data' is considered to be a binary string, so `parser_fun' is used
 %% to convert the binary string to a supported internal representation of json.
+%% If `parser_fun' is not provided, then `Data' is considered to already be a
+%% supported internal representation of json.
 -spec validate( Schema   :: any()
-              , Data     :: binary()
+              , Data     :: json_term() | binary()
               , Options  :: [{Key :: atom(), Data :: any()}]
               ) -> {ok, json_term()}
                  | error().
@@ -173,8 +175,8 @@ validate(Schema, Data, Options) ->
 
 %% @doc Equivalent to {@link validate_with_schema/3} where `Options'
 %% is an empty list.
--spec validate_with_schema( Schema :: json_term()
-                          , Data   :: json_term()
+-spec validate_with_schema( Schema :: json_term() | binary()
+                          , Data   :: json_term() | binary()
                           ) -> {ok, json_term()}
                              | error().
 validate_with_schema(Schema, Data) ->
@@ -182,12 +184,14 @@ validate_with_schema(Schema, Data) ->
 
 %% @doc Validates json `Data' agains the given schema `Schema', using `Options'.
 %% If the given json is valid, then it is returned to the caller, otherwise
-%% an error with an appropriate error reason is returned. If `parser_fun' option
-%% is provided, then `Data' is considered to be a binary string, so
-%% `parser_fun' is used to convert the binary string to a supported internal
-%% representation of json.
--spec validate_with_schema( Schema   :: binary()
-                          , Data     :: binary()
+%% an error with an appropriate error reason is returned. If the `parser_fun'
+%% option is provided, then both `Schema' and `Data' are considered to be a
+%% binary string, so `parser_fun' is used to convert both binary strings to a
+%% supported internal representation of json.
+%% If `parser_fun' is not provided, then both `Schema' and `Data' are considered
+%% to already be a supported internal representation of json.
+-spec validate_with_schema( Schema   :: json_term() | binary()
+                          , Data     :: json_term() | binary()
                           , Options  :: [{Key :: atom(), Data :: any()}]
                           ) -> {ok, json_term()}
                              | error().
