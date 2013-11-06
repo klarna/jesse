@@ -429,7 +429,7 @@ check_properties(Value, Properties, State) ->
                              true ->
                                Error = { ?data_invalid
                                        , get_current_schema(CurrentState)
-                                       , ?missing_required_property
+                                       , {?missing_required_property, PropertyName}
                                        , Value
                                        },
                                handle_error(Error, CurrentState);
@@ -853,7 +853,7 @@ check_pattern(Value, Pattern, State) ->
     nomatch ->
       Error = { ?data_invalid
               , get_current_schema(State)
-              , ?no_match
+              , {?no_match, Pattern}
               , Value
               },
       handle_error(Error, State)
