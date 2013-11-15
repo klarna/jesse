@@ -429,7 +429,8 @@ check_properties(Value, Properties, State) ->
                              true ->
                                Error = { ?data_invalid
                                        , get_current_schema(CurrentState)
-                                       , {?missing_required_property, PropertyName}
+                                       , {?missing_required_property
+                                         , PropertyName}
                                        , Value
                                        },
                                handle_error(Error, CurrentState);
