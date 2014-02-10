@@ -47,7 +47,8 @@ ok
 [1,<<"x">>]
 6> jesse:validate(some_key, Json2).
 {error,[{data_invalid,{[{<<"type">>,<<"integer">>}]},
-                      wrong_type,<<"x">>}]}
+                      wrong_type,<<"x">>,
+                      [1]}]}
 ```
 
 (using a callback)
@@ -66,7 +67,8 @@ ok
 3>                [{parser_fun, fun jiffy:decode/1}]).
 {error,[{data_invalid,{[{<<"uniqueItems">>,true}]},
                       {not_unique,{[{<<"foo">>,<<"bar">>}]}},
-                      [{[{<<"foo">>,<<"bar">>}]},{[{<<"foo">>,<<"bar">>}]}]}]}
+                      [{[{<<"foo">>,<<"bar">>}]},{[{<<"foo">>,<<"bar">>}]}],
+                      []}]}
 ```
 
 * Call jesse with schema definition in place (do not use internal storage)
@@ -84,7 +86,8 @@ ok
 <<"abc">>
 5> jesse:validate_with_schema(Schema, Json2).
 {error,[{data_invalid,{[{<<"pattern">>,<<"^a*$">>}]},
-                      no_match,<<"abc">>}]}
+                      {no_match,<<"^a*$">>},
+                      <<"abc">>,[]}]}
 ```
 
 (using a callback)
@@ -100,7 +103,8 @@ ok
 3>                            <<"{\"foo\": \"bar\", \"fooooo\": 2}">>,
 3>                            [{parser_fun, fun jiffy:decode/1}]).
 {error,[{data_invalid,{[{<<"type">>,<<"integer">>}]},
-                      wrong_type,<<"bar">>}]}
+                      wrong_type,<<"bar">>,
+                      [<<"foo">>]}]}
 ```
 
 * Since 0.4.0 it's possible to say jesse to collect errors, and not stop
@@ -122,7 +126,8 @@ now let's change the value of the field "b" to an integer
 3>                            <<"{\"a\": 1, \"b\": 2, \"c\": true}">>,
 3>                            [{parser_fun, fun jiffy:decode/1}]).
 {error,[{data_invalid,{[{<<"type">>,<<"string">>}]},
-                      wrong_type,2}]}
+                      wrong_type,2,
+                      [<<"b">>]}]}
 ```
 
 works as expected, but let's change the value of the field "c" as well
@@ -132,7 +137,8 @@ works as expected, but let's change the value of the field "c" as well
 4>                            <<"{\"a\": 1, \"b\": 2, \"c\": 3}">>,
 4>                            [{parser_fun, fun jiffy:decode/1}]).
 {error,[{data_invalid,{[{<<"type">>,<<"string">>}]},
-                      wrong_type,2}]}
+                      wrong_type,2,
+                      [<<"b">>]}]}
 ```
 
 still works as expected, jesse stops validating as soon as finds an error.
@@ -144,8 +150,11 @@ let's use the 'allowed_errors' option, and set it to 1
 5>                            [{parser_fun, fun jiffy:decode/1},
 5>                             {allowed_errors, 1}]).
 {error,[{data_invalid,{[{<<"type">>,<<"boolean">>}]},
-                      wrong_type,3},
-        {data_invalid,{[{<<"type">>,<<"string">>}]},wrong_type,2}]}
+                      wrong_type,3,
+                      [<<"c">>]},
+        {data_invalid,{[{<<"type">>,<<"string">>}]},
+                      wrong_type,2,
+                      [<<"b">>]}]}
 ```
 
 now we got a list of two errors. let's now change the value of the field "a"
@@ -157,9 +166,11 @@ to a boolean
 6>                            [{parser_fun, fun jiffy:decode/1},
 6>                             {allowed_errors, 1}]).
 {error,[{data_invalid,{[{<<"type">>,<<"string">>}]},
-                      wrong_type,2},
+                      wrong_type,2,
+                      [<<"b">>]},
         {data_invalid,{[{<<"type">>,<<"integer">>}]},
-                      wrong_type,true}]}
+                      wrong_type,true,
+                      [<<"a">>]}]}
 ```
 
 we stil got only two errors. let's try using 'infinity' as the argument
@@ -171,10 +182,14 @@ for the 'allowed_errors' option
 7>                            [{parser_fun, fun jiffy:decode/1},
 7>                             {allowed_errors, infinity}]).
 {error,[{data_invalid,{[{<<"type">>,<<"boolean">>}]},
-                      wrong_type,3},
-        {data_invalid,{[{<<"type">>,<<"string">>}]},wrong_type,2},
+                      wrong_type,3,
+                      [<<"c">>]},
+        {data_invalid,{[{<<"type">>,<<"string">>}]},
+                      wrong_type,2,
+                      [<<"b">>]},
         {data_invalid,{[{<<"type">>,<<"integer">>}]},
-                      wrong_type,true}]}
+                      wrong_type,true,
+                      [<<"a">>]}]}
 ```
 
 Caveats
