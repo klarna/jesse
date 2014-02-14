@@ -829,7 +829,7 @@ check_pattern(Value, Pattern, State) ->
   case re:run(Value, Pattern, [{capture, none}]) of
     match   -> State;
     nomatch ->
-      handle_data_invalid({?no_match, Pattern}, Value, State)
+      handle_data_invalid(?no_match, Value, State)
   end.
 
 %% @doc 5.17.  minLength

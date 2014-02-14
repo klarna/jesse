@@ -86,7 +86,7 @@ ok
 <<"abc">>
 5> jesse:validate_with_schema(Schema, Json2).
 {error,[{data_invalid,{[{<<"pattern">>,<<"^a*$">>}]},
-                      {no_match,<<"^a*$">>},
+                      no_match,
                       <<"abc">>,[]}]}
 ```
 
