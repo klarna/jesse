@@ -448,11 +448,11 @@ check_properties(Value, Properties, State) ->
                            NewState = set_current_schema( CurrentState
                                                         , PropertySchema
                                                         ),
-                           check_value(PropertyName
-                                       , Property
-                                       , unwrap(PropertySchema)
-                                       , NewState
-                                       )
+                           check_value( PropertyName
+                                      , Property
+                                      , unwrap(PropertySchema)
+                                      , NewState
+                                      )
                        end
                    end
                  , State
@@ -633,14 +633,14 @@ check_items_fun(Tuples, State) ->
                                  NewState = set_current_schema( CurrentState
                                                               , Schema
                                                               ),
-                                 { Index + 1,
-                                   check_value(Index, Item, unwrap(Schema),
+                                 { Index + 1
+                                 , check_value(Index, Item, unwrap(Schema),
                                                NewState)
                                  }
-                             end
-                           , {0, State}
-                           , Tuples
-                           ),
+                               end
+                             , {0, State}
+                             , Tuples
+                             ),
   set_current_schema(TmpState, get_current_schema(State)).
 
 %% @doc 5.8.  dependencies
@@ -918,14 +918,14 @@ check_format(_Value, _Format, State) ->
 %% integer.)  The value of this attribute SHOULD NOT be 0.
 %% @private
 check_divisible_by(Value, 0, State) ->
-  handle_data_invalid('not_divisible', Value, State);
+  handle_data_invalid(?not_divisible, Value, State);
 check_divisible_by(Value, DivisibleBy, State) ->
   Result = (Value / DivisibleBy - trunc(Value / DivisibleBy)) * DivisibleBy,
   case Result of
     0.0 ->
       State;
     _   ->
-      handle_data_invalid('not_divisible', Value, State)
+      handle_data_invalid(?not_divisible, Value, State)
   end.
 
 %% @doc 5.25.  disallow
