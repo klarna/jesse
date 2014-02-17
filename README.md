@@ -51,6 +51,9 @@ ok
                       [1]}]}
 ```
 
+The `[1]` in the error is the path in the original value to `<<"x">>` where the
+validation failed. See *Validation errors* below for the full error format.
+
 (using a callback)
 
 ```erlang
@@ -191,6 +194,31 @@ for the 'allowed_errors' option
                       wrong_type,true,
                       [<<"a">>]}]}
 ```
+
+Validation errors
+-----------------
+
+The validation functions `jesse:validate/2` and `jesse:validate_with_schema/2,3`
+return `{ok, Value}` on success and `{error, ListOfErrors}` on failure. An error
+is either `data_invalid` or `schema_invalid`.
+
+A `data_invalid` error is a tuple on the form `{data_invalid, Schema, ErrorType,
+Value, Path}` where
+* Schema is the part of the schema where validation failed
+* ErrorType is the type of error, usually an atom such as `wrong_type`,
+  `not_in_range` or `not_in_range`
+* Value is The part of the value where failed validation agains Schema
+* Path is a path to where validation failed within the original value. The path
+  is a list of property names and zero-based array indices referencing the
+  properties and array items within a JSON document; e.g. in the JSON document
+  `{"foo": [42, 43, 44]}`, the path `[<<"foo">>, 0]` refers to the value 42. An
+  empty list refers to the whole JSON document.
+
+A `schema_invalid` error is a tuple on the form `{schema_invalid, Schema,
+ErrorType}` where
+* Schema is the part of the schema whis is invalid
+* ErrorType is an atom such as `missing_id_field` or a tuple such as
+  `{wrong_type_dependency, Dependency}`.
 
 Caveats
 -------
