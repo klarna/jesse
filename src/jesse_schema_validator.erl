@@ -92,7 +92,7 @@
 -record( state
        , { original_schema :: jesse:json_term()
          , current_schema  :: jesse:json_term()
-         , current_path    :: [binary()]
+         , current_path    :: [binary()] %% current path in reversed order
          , allowed_errors  :: non_neg_integer() | 'infinity'
          , error_list      :: list()
          , error_handler   :: fun((#state{}) -> list() | no_return())
@@ -1088,7 +1088,7 @@ handle_data_invalid(Info, Value, State) ->
           , State#state.current_schema
           , Info
           , Value
-          , State#state.current_path
+          , lists:reverse(State#state.current_path)
           },
   handle_error(Error, State).
 

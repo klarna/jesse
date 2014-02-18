@@ -15,7 +15,12 @@ data_invalid_test() ->
   Schema = {[
     {<<"type">>, <<"object">>},
     {<<"properties">>, {[
-      {<<"foo">>, IntegerSchema}
+      {<<"foo">>, {[
+        {<<"type">>, <<"object">>},
+        {<<"properties">>, {[
+            {<<"subfoo">>, IntegerSchema}
+        ]}}
+      ]}}
     ]}},
     {<<"patternProperties">>, {[
       {<<"^b">>, IntegerSchema}
@@ -28,10 +33,10 @@ data_invalid_test() ->
     jesse_schema_validator:validate(Schema, <<"foo">>, [])
   ),
 
-  %% Properties, level 1
+  %% Properties, 2 levels
   ?assertThrow(
-    [{data_invalid, IntegerSchema, wrong_type, <<"bar">>, [<<"foo">>]}],
-    jesse_schema_validator:validate(Schema, {[{<<"foo">>, <<"bar">>}]}, [])
+    [{data_invalid, IntegerSchema, wrong_type, <<"bar">>, [<<"foo">>, <<"subfoo">>]}],
+    jesse_schema_validator:validate(Schema, {[{<<"foo">>, {[{<<"subfoo">>, <<"bar">>}]}}]}, [])
   ),
 
   %% patternProperties, level 1
