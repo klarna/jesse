@@ -206,7 +206,7 @@ A `data_invalid` error is a tuple on the form `{data_invalid, Schema, ErrorType,
 Value, Path}` where
 * Schema is the part of the schema where validation failed
 * ErrorType is the type of error, usually an atom such as `wrong_type`,
-  `not_in_range` or `not_in_range`
+  `not_in_range` or `no_match`
 * Value is The part of the value where failed validation agains Schema
 * Path is a path to where validation failed within the original value. The path
   is a list of property names and zero-based array indices referencing the
@@ -216,7 +216,7 @@ Value, Path}` where
 
 A `schema_invalid` error is a tuple on the form `{schema_invalid, Schema,
 ErrorType}` where
-* Schema is the part of the schema whis is invalid
+* Schema is the part of the schema which is invalid
 * ErrorType is an atom such as `missing_id_field` or a tuple such as
   `{wrong_type_dependency, Dependency}`.
 
