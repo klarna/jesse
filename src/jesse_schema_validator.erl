@@ -92,6 +92,7 @@
 -record( state
        , { original_schema :: jesse:json_term()
          , current_schema  :: jesse:json_term()
+         , current_path    :: [binary()] %% current path in reversed order
          , allowed_errors  :: non_neg_integer() | 'infinity'
          , error_list      :: list()
          , error_handler   :: fun((#state{}) -> list() | no_return())
@@ -147,6 +148,16 @@ is_json_object([{Key, _Value} | _])
 is_json_object(_)                                   -> false.
 
 %%% Internal functions
+
+%% @doc Adds Property to the current path and checks the value using check_value/3
+%% @private
+check_value(Property, Value, Attrs, State) ->
+  %% Add Property to path
+  State1 = State#state{current_path = [Property | State#state.current_path]},
+  State2 = check_value(Value, Attrs, State1),
+  %% Reset path again
+  State2#state{current_path = State#state.current_path}.
+
 %% @doc Goes through attributes of the given schema `JsonSchema' and
 %% validates the value `Value' against them.
 %% @private
@@ -390,7 +401,7 @@ check_union_type(Value, UnionType) ->
                        is_type_valid(Value, Type)
                    end
                  catch
-                   throw:[{?data_invalid, _, _, _} | _] -> false;
+                   throw:[{?data_invalid, _, _, _, _} | _] -> false;
                    throw:[{?schema_invalid, _, _} | _]  -> false
                  end
              end
@@ -399,8 +410,7 @@ check_union_type(Value, UnionType) ->
 
 %% @private
 wrong_type(Value, State) ->
-  Error = {?data_invalid, get_current_schema(State), ?wrong_type, Value},
-  handle_error(Error, State).
+  handle_data_invalid(?wrong_type, Value, State).
 
 %% @doc 5.2.  properties
 %%
@@ -427,13 +437,10 @@ check_properties(Value, Properties, State) ->
 %% @end
                            case get_path(?REQUIRED, PropertySchema) of
                              true ->
-                               Error = { ?data_invalid
-                                       , get_current_schema(CurrentState)
-                                       , {?missing_required_property
-                                         , PropertyName}
-                                       , Value
-                                       },
-                               handle_error(Error, CurrentState);
+                               handle_data_invalid( {?missing_required_property
+                                                     , PropertyName}
+                                                   , Value
+                                                   , CurrentState);
                              _    ->
                                CurrentState
                            end;
@@ -441,7 +448,8 @@ check_properties(Value, Properties, State) ->
                            NewState = set_current_schema( CurrentState
                                                         , PropertySchema
                                                         ),
-                           check_value( Property
+                           check_value( PropertyName
+                                      , Property
                                       , unwrap(PropertySchema)
                                       , NewState
                                       )
@@ -476,7 +484,8 @@ check_pattern_properties(Value, PatternProperties, State) ->
 check_match({PropertyName, PropertyValue}, {Pattern, Schema}, State) ->
   case re:run(PropertyName, Pattern, [{capture, none}]) of
     match   ->
-      check_value( PropertyValue
+      check_value( PropertyName
+                 , PropertyValue
                  , unwrap(Schema)
                  , set_current_schema(State, Schema)
                  );
@@ -500,8 +509,7 @@ check_additional_properties(Value, false, State) ->
   case get_additional_properties(Value, Properties, PatternProperties) of
     []      -> State;
     _Extras ->
-      Error = {?data_invalid, JsonSchema, ?no_extra_properties_allowed, Value},
-      handle_error(Error, State)
+      handle_data_invalid(?no_extra_properties_allowed, Value, State)
   end;
 check_additional_properties(_Value, true, State) ->
   State;
@@ -513,11 +521,12 @@ check_additional_properties(Value, AdditionalProperties, State) ->
     []     -> State;
     Extras ->
       TmpState
-        = lists:foldl( fun(Extra, CurrentState) ->
+        = lists:foldl( fun({ExtraName, Extra}, CurrentState) ->
                            NewState = set_current_schema( CurrentState
                                                         , AdditionalProperties
                                                         ),
-                           check_value( Extra
+                           check_value( ExtraName
+                                      , Extra
                                       , unwrap(AdditionalProperties)
                                       , NewState
                                       )
@@ -528,6 +537,8 @@ check_additional_properties(Value, AdditionalProperties, State) ->
       set_current_schema(TmpState, JsonSchema)
   end.
 
+%% @doc Returns the additional properties as a list of pairs containing the name and the value of
+%% all properties not covered by Properties or PatternProperties.
 %% @private
 get_additional_properties(Value, Properties, PatternProperties) ->
   ValuePropertiesNames  = [Name || {Name, _} <- unwrap(Value)],
@@ -540,7 +551,7 @@ get_additional_properties(Value, Properties, PatternProperties) ->
                            , ExtraNames0
                            , Patterns
                            ),
-  lists:map(fun(Name) -> get_path(Name, Value) end, ExtraNames).
+  lists:map(fun(Name) -> {Name, get_path(Name, Value)} end, ExtraNames).
 
 %% @private
 filter_extra_names(Pattern, ExtraNames) ->
@@ -573,21 +584,19 @@ filter_extra_names(Pattern, ExtraNames) ->
 check_items(Value, Items, State) ->
   case is_json_object(Items) of
     true ->
-      TmpState = lists:foldl( fun(Item, CurrentState) ->
-                                  check_value(Item, unwrap(Items), CurrentState)
-                              end
-                            , set_current_schema(State, Items)
-                            , Value
-                            ),
+      {_, TmpState} = lists:foldl( fun(Item, {Index, CurrentState}) ->
+                                       { Index + 1
+                                       , check_value(Index, Item, unwrap(Items), CurrentState)
+                                       }
+                                   end
+                                 , {0, set_current_schema(State, Items)}
+                                 , Value
+                                 ),
       set_current_schema(TmpState, get_current_schema(State));
     false when is_list(Items) ->
       check_items_array(Value, Items, State);
     _ ->
-      Error = { ?schema_invalid
-              , get_current_schema(State)
-              , {?wrong_type_items, Items}
-              },
-      handle_error(Error, State)
+      handle_schema_invalid({?wrong_type_items, Items}, State)
   end.
 
 %% @private
@@ -608,29 +617,30 @@ check_items_array(Value, Items, State) ->
         []    -> State;
         true  -> State;
         false ->
-          Error = {?data_invalid, JsonSchema, ?no_extra_items_allowed, Value},
-          handle_error(Error, State);
+          handle_data_invalid(?no_extra_items_allowed, Value, State);
         AdditionalItems ->
           ExtraSchemas = lists:duplicate(NExtra, AdditionalItems),
           Tuples = lists:zip(Value, lists:append(Items, ExtraSchemas)),
           check_items_fun(Tuples, State)
       end;
     NExtra when NExtra < 0 ->
-      Error = {?data_invalid, JsonSchema, ?not_enought_items, Value},
-      handle_error(Error, State)
+      handle_data_invalid(?not_enought_items, Value, State)
   end.
 
 %% @private
 check_items_fun(Tuples, State) ->
-  TmpState = lists:foldl( fun({Item, Schema}, CurrentState) ->
-                              NewState = set_current_schema( CurrentState
-                                                           , Schema
-                                                           ),
-                              check_value(Item, unwrap(Schema), NewState)
-                          end
-                        , State
-                        , Tuples
-                        ),
+  {_, TmpState} = lists:foldl( fun({Item, Schema}, {Index, CurrentState}) ->
+                                 NewState = set_current_schema( CurrentState
+                                                              , Schema
+                                                              ),
+                                 { Index + 1
+                                 , check_value(Index, Item, unwrap(Schema),
+                                               NewState)
+                                 }
+                               end
+                             , {0, State}
+                             , Tuples
+                             ),
   set_current_schema(TmpState, get_current_schema(State)).
 
 %% @doc 5.8.  dependencies
@@ -671,12 +681,7 @@ check_dependencies(Value, Dependencies, State) ->
 check_dependency_value(Value, Dependency, State) when is_binary(Dependency) ->
   case get_path(Dependency, Value) of
     [] ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , {?missing_dependency, Dependency}
-              , Value
-              },
-      handle_error(Error, State);
+      handle_data_invalid({?missing_dependency, Dependency}, Value, State);
     _  ->
       State
   end;
@@ -691,11 +696,7 @@ check_dependency_value(Value, Dependency, State) ->
     false when is_list(Dependency) ->
       check_dependency_array(Value, Dependency, State);
     _ ->
-      Error = { ?schema_invalid
-              , get_current_schema(State)
-              , {?wrong_type_dependency, Dependency}
-              },
-      handle_error(Error, State)
+      handle_schema_invalid({?wrong_type_dependency, Dependency}, State)
   end.
 
 %% @private
@@ -727,12 +728,7 @@ check_minimum(Value, Minimum, ExclusiveMinimum, State) ->
   case Result of
     true  -> State;
     false ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , ?not_in_range
-              , Value
-              },
-      handle_error(Error, State)
+      handle_data_invalid(?not_in_range, Value, State)
   end.
 
 %%% @doc 5.10.  maximum
@@ -755,12 +751,7 @@ check_maximum(Value, Maximum, ExclusiveMaximum, State) ->
   case Result of
     true  -> State;
     false ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , ?not_in_range
-              , Value
-              },
-      handle_error(Error, State)
+      handle_data_invalid(?not_in_range, Value, State)
   end.
 
 %% @doc 5.13.  minItems
@@ -771,12 +762,7 @@ check_maximum(Value, Maximum, ExclusiveMaximum, State) ->
 check_min_items(Value, MinItems, State) when length(Value) >= MinItems ->
   State;
 check_min_items(Value, _MinItems, State) ->
-  Error = { ?data_invalid
-          , get_current_schema(State)
-          , ?wrong_size
-          , Value
-          },
-  handle_error(Error, State).
+  handle_data_invalid(?wrong_size, Value, State).
 
 %% @doc 5.14.  maxItems
 %%
@@ -786,12 +772,7 @@ check_min_items(Value, _MinItems, State) ->
 check_max_items(Value, MaxItems, State) when length(Value) =< MaxItems ->
   State;
 check_max_items(Value, _MaxItems, State) ->
-  Error = { ?data_invalid
-          , get_current_schema(State)
-          , ?wrong_size
-          , Value
-          },
-  handle_error(Error, State).
+  handle_data_invalid(?wrong_size, Value, State).
 
 %% @doc 5.15.  uniqueItems
 %%
@@ -822,11 +803,7 @@ check_unique_items(Value, true, State) ->
                      lists:foreach( fun(ItemFromRest) ->
                                         case is_equal(Item, ItemFromRest) of
                                           true  ->
-                                            throw({ ?data_invalid
-                                                  , get_current_schema(State)
-                                                  , {?not_unique, Item}
-                                                  , Value
-                                                  });
+                                            throw({?not_unique, Item});
                                           false -> ok
                                         end
                                     end
@@ -839,7 +816,7 @@ check_unique_items(Value, true, State) ->
                ),
     State
   catch
-    throw:Error -> handle_error(Error, State)
+    throw:ErrorInfo -> handle_data_invalid(ErrorInfo, Value, State)
   end.
 
 %% @doc 5.16.  pattern
@@ -852,12 +829,7 @@ check_pattern(Value, Pattern, State) ->
   case re:run(Value, Pattern, [{capture, none}]) of
     match   -> State;
     nomatch ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , {?no_match, Pattern}
-              , Value
-              },
-      handle_error(Error, State)
+      handle_data_invalid(?no_match, Value, State)
   end.
 
 %% @doc 5.17.  minLength
@@ -869,12 +841,7 @@ check_min_length(Value, MinLength, State) ->
   case length(unicode:characters_to_list(Value)) >= MinLength of
     true  -> State;
     false ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , ?wrong_length
-              , Value
-              },
-      handle_error(Error, State)
+      handle_data_invalid(?wrong_length, Value, State)
   end.
 
 %% @doc 5.18.  maxLength
@@ -886,12 +853,7 @@ check_max_length(Value, MaxLength, State) ->
   case length(unicode:characters_to_list(Value)) =< MaxLength of
     true  -> State;
     false ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , ?wrong_length
-              , Value
-              },
-      handle_error(Error, State)
+      handle_data_invalid(?wrong_length, Value, State)
   end.
 
 %% @doc 5.19.  enum
@@ -913,12 +875,7 @@ check_enum(Value, Enum, State) ->
   case IsValid of
     true  -> State;
     false ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , ?not_in_range
-              , Value
-              },
-      handle_error(Error, State)
+      handle_data_invalid(?not_in_range, Value, State)
   end.
 
 %% TODO:
@@ -961,20 +918,14 @@ check_format(_Value, _Format, State) ->
 %% integer.)  The value of this attribute SHOULD NOT be 0.
 %% @private
 check_divisible_by(Value, 0, State) ->
-  Error = {?data_invalid, get_current_schema(State), 'not_divisible', Value},
-  handle_error(Error, State);
+  handle_data_invalid(?not_divisible, Value, State);
 check_divisible_by(Value, DivisibleBy, State) ->
   Result = (Value / DivisibleBy - trunc(Value / DivisibleBy)) * DivisibleBy,
   case Result of
     0.0 ->
       State;
     _   ->
-      Error = { ?data_invalid
-              , get_current_schema(State)
-              , 'not_divisible'
-              , Value
-              },
-      handle_error(Error, State)
+      handle_data_invalid(?not_divisible, Value, State)
   end.
 
 %% @doc 5.25.  disallow
@@ -987,10 +938,9 @@ check_divisible_by(Value, DivisibleBy, State) ->
 check_disallow(Value, Disallow, State) ->
   try check_type(Value, Disallow, new_state(Disallow, [])) of
       _ ->
-      Error = {?data_invalid, get_current_schema(State), ?not_allowed, Value},
-      handle_error(Error, State)
+      handle_data_invalid(?not_allowed, Value, State)
   catch
-    throw:[{?data_invalid, _, _, _} | _] -> State
+    throw:[{?data_invalid, _, _, _, _} | _] -> State
   end.
 
 %% @doc 5.26.  extends
@@ -1098,6 +1048,7 @@ new_state(JsonSchema, Options) ->
                                      , 0
                                      ),
   #state{ current_schema  = JsonSchema
+        , current_path    = []
         , original_schema = JsonSchema
         , allowed_errors  = AllowedErrors
         , error_list      = []
@@ -1130,6 +1081,20 @@ set_error_list(State, ErrorList) ->
 %% @private
 get_allowed_errors(#state{allowed_errors = AllowedErrors}) ->
   AllowedErrors.
+
+%% @private
+handle_data_invalid(Info, Value, State) ->
+  Error = { ?data_invalid
+          , State#state.current_schema
+          , Info
+          , Value
+          , lists:reverse(State#state.current_path)
+          },
+  handle_error(Error, State).
+
+%% @private
+handle_schema_invalid(Info, State) ->
+  handle_error({?schema_invalid, State#state.current_schema, Info}, State).
 
 %% @private
 handle_error(Error, State) ->

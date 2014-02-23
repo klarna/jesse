@@ -54,7 +54,7 @@
 -type error_type() :: {'missing_id_field', Field :: binary()}
                     | {'missing_required_property', Name :: binary()}
                     | {'missing_dependency', Name :: binary()}
-                    | {'no_match', Pattern :: binary()}
+                    | 'no_match'
                     | 'no_extra_properties_allowed'
                     | 'no_extra_items_allowed'
                     | 'not_enought_items'
