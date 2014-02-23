@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+0.5.0
+-----
+
+*   Add path to errors (error format changed, so it's backward incompatible change)
+
 0.4.0
 -----
 
