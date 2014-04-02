@@ -878,8 +878,14 @@ check_enum(Value, Enum, State) ->
       handle_data_invalid(?not_in_range, Value, State)
   end.
 
-%% TODO:
-check_format(_Value, _Format, State) ->
+check_format(Value, Format, State) when is_function(Format) ->
+  case Format(Value) of
+    ok -> State;
+    {error, wrong} ->
+      handle_data_invalid(?wrong_format, Value, State)
+  end.
+
+%% TODO: for check_format previos version
 %% 'date-time': /^\d{4}-(?:0[0-9]{1}|1[0-2]{1})-[0-9]{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
 %% 'date': /^\d{4}-(?:0[0-9]{1}|1[0-2]{1})-[0-9]{2}$/,
 %% 'time': /^\d{2}:\d{2}:\d{2}$/,
@@ -909,7 +915,7 @@ check_format(_Value, _Format, State) ->
 %% },
 %% 'style': /\s*(.+?):\s*([^;]+);?/g,
 %% 'phone': /^\+(?:[0-9] ?){6,14}[0-9]$/
-  State.
+%% State.
 
 %% @doc 5.24.  divisibleBy
 %%
