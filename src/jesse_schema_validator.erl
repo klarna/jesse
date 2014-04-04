@@ -509,9 +509,13 @@ check_additional_properties(Value, false, State) ->
   case get_additional_properties(Value, Properties, PatternProperties) of
     []      -> State;
     Extras ->
-      [{Property, _} | _] = Extras,
-      State1 = State#state{current_path = [Property | State#state.current_path]},
-      handle_data_invalid(?no_extra_properties_allowed, Value, State1)
+      CurrentPath = State#state.current_path,
+      lists:foreach(
+        fun({Property, _}) ->
+            State1 = State#state{current_path = [Property | CurrentPath]},
+            handle_data_invalid(?no_extra_properties_allowed, Value, State1)
+        end,
+        Extras)
   end;
 check_additional_properties(_Value, true, State) ->
   State;
