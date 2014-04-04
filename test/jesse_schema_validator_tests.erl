@@ -45,6 +45,47 @@ data_invalid_test() ->
     jesse_schema_validator:validate(Schema, {[{<<"bar">>, <<"baz">>}]}, [])
   ),
 
+  %% Object, additionalProperties, level 1
+  Schema2 = {[
+    {<<"type">>, <<"object">>},
+    {<<"properties">>, {[
+      {<<"foo">>, IntegerSchema}
+    ]}},
+    {<<"additionalProperties">>, false}
+  ]},
+
+  %% additionalProperties, level1
+  ?assertThrow(
+    [{data_invalid, Schema2, no_extra_properties_allowed, _, [<<"bar">>]}],
+    jesse_schema_validator:validate(Schema2, {[{<<"foo">>, 0},
+                                               {<<"bar">>, <<"baz">>}]}, [])
+  ),
+
+  %% Object, additionalProperties, level 2
+  Schema3 = {[
+    {<<"type">>, <<"object">>},
+    {<<"properties">>, {[
+      {<<"foo">>, {[
+        {<<"type">>, <<"object">>},
+        {<<"properties">>, {[
+            {<<"subfoo">>, IntegerSchema}
+        ]}},
+        {<<"additionalProperties">>, false}
+      ]}}
+    ]}},
+    {<<"additionalProperties">>, false}
+  ]},
+
+  %% additionalProperties, level 2
+  ?assertThrow(
+    [{data_invalid, _, no_extra_properties_allowed, _, [<<"foo">>, <<"bar">>]}],
+    jesse_schema_validator:validate(Schema3,
+                                    {[{<<"foo">>, {[
+                                        {<<"subfoo">>, 1},
+                                        {<<"bar">>, 2}
+                                     ]}}]}, [])
+  ),
+
   %% Items: A zero-based index is used in the property path
   ItemsSchema = {[
     {<<"type">>, <<"array">>},

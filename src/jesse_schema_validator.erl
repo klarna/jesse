@@ -508,8 +508,10 @@ check_additional_properties(Value, false, State) ->
   PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
   case get_additional_properties(Value, Properties, PatternProperties) of
     []      -> State;
-    _Extras ->
-      handle_data_invalid(?no_extra_properties_allowed, Value, State)
+    Extras ->
+      [{Property, _} | _] = Extras,
+      State1 = State#state{current_path = [Property | State#state.current_path]},
+      handle_data_invalid(?no_extra_properties_allowed, Value, State1)
   end;
 check_additional_properties(_Value, true, State) ->
   State;
