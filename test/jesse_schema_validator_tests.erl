@@ -88,3 +88,23 @@ data_invalid_test() ->
   ),
 
   ok.
+
+dots_used_in_keys_test() ->
+  Schema      = {[ {<<"type">>, <<"object">>}
+                 , {<<"properties">>
+                   , {[{<<"3.4.5.6.7">>, {[{<<"type">>, <<"string">>}]}}]}
+                   }]},
+  ValidJson   = {[{<<"3.4.5.6.7">>, <<"Hello world!">>}]},
+  InvalidJson = {[{<<"3.4.5.6.7">>, true}]},
+
+  ?assertEqual( {ok, ValidJson}
+              , jesse_schema_validator:validate(Schema, ValidJson, [])
+              ),
+  ?assertThrow([{data_invalid,{[{<<"type">>,<<"string">>}]}, wrong_type, true, [<<"3.4.5.6.7">>]}]
+              , jesse_schema_validator:validate(Schema, InvalidJson, [])
+              ).
+
+
+%%% Local Variables:
+%%% erlang-indent-level: 2
+%%% End:

@@ -125,7 +125,7 @@ result(State) ->
 %% will be thrown.
 -spec get_schema_id(Schema :: jesse:json_term()) -> string().
 get_schema_id(Schema) ->
-  case get_path(?ID, Schema) of
+  case get_value(?ID, Schema) of
     [] -> throw({schema_invalid, Schema, missing_id_field});
     Id -> erlang:binary_to_list(Id)
   end.
@@ -223,9 +223,9 @@ check_value(Value, [{?DEPENDENCIES, Dependencies} | Attrs], State) ->
 check_value(Value, [{?MINIMUM, Minimum} | Attrs], State) ->
   NewState = case is_number(Value) of
                true  ->
-                 ExclusiveMinimum = get_path( ?EXCLUSIVEMINIMUM
-                                            , get_current_schema(State)
-                                            ),
+                 ExclusiveMinimum = get_value( ?EXCLUSIVEMINIMUM
+                                             , get_current_schema(State)
+                                             ),
                  check_minimum(Value, Minimum, ExclusiveMinimum, State);
                false ->
                  State
@@ -234,9 +234,9 @@ check_value(Value, [{?MINIMUM, Minimum} | Attrs], State) ->
 check_value(Value, [{?MAXIMUM, Maximum} | Attrs], State) ->
   NewState = case is_number(Value) of
                true  ->
-                 ExclusiveMaximum = get_path( ?EXCLUSIVEMAXIMUM
-                                            , get_current_schema(State)
-                                            ),
+                 ExclusiveMaximum = get_value( ?EXCLUSIVEMAXIMUM
+                                             , get_current_schema(State)
+                                             ),
                  check_maximum(Value, Maximum, ExclusiveMaximum, State);
                false ->
                  State
@@ -427,7 +427,7 @@ wrong_type(Value, State) ->
 check_properties(Value, Properties, State) ->
   TmpState
     = lists:foldl( fun({PropertyName, PropertySchema}, CurrentState) ->
-                       case get_path(PropertyName, Value) of
+                       case get_value(PropertyName, Value) of
                          [] ->
 %% @doc 5.7.  required
 %%
@@ -435,7 +435,7 @@ check_properties(Value, Properties, State) ->
 %% be undefined.  This is false by default, making the instance
 %% optional.
 %% @end
-                           case get_path(?REQUIRED, PropertySchema) of
+                           case get_value(?REQUIRED, PropertySchema) of
                              true ->
                                handle_data_invalid( {?missing_required_property
                                                      , PropertyName}
@@ -504,8 +504,8 @@ check_match({PropertyName, PropertyValue}, {Pattern, Schema}, State) ->
 %% @private
 check_additional_properties(Value, false, State) ->
   JsonSchema        = get_current_schema(State),
-  Properties        = get_path(?PROPERTIES, JsonSchema),
-  PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
+  Properties        = get_value(?PROPERTIES, JsonSchema),
+  PatternProperties = get_value(?PATTERNPROPERTIES, JsonSchema),
   case get_additional_properties(Value, Properties, PatternProperties) of
     []      -> State;
     _Extras ->
@@ -515,8 +515,8 @@ check_additional_properties(_Value, true, State) ->
   State;
 check_additional_properties(Value, AdditionalProperties, State) ->
   JsonSchema        = get_current_schema(State),
-  Properties        = get_path(?PROPERTIES, JsonSchema),
-  PatternProperties = get_path(?PATTERNPROPERTIES, JsonSchema),
+  Properties        = get_value(?PROPERTIES, JsonSchema),
+  PatternProperties = get_value(?PATTERNPROPERTIES, JsonSchema),
   case get_additional_properties(Value, Properties, PatternProperties) of
     []     -> State;
     Extras ->
@@ -551,7 +551,7 @@ get_additional_properties(Value, Properties, PatternProperties) ->
                            , ExtraNames0
                            , Patterns
                            ),
-  lists:map(fun(Name) -> {Name, get_path(Name, Value)} end, ExtraNames).
+  lists:map(fun(Name) -> {Name, get_value(Name, Value)} end, ExtraNames).
 
 %% @private
 filter_extra_names(Pattern, ExtraNames) ->
@@ -613,7 +613,7 @@ check_items_array(Value, Items, State) ->
 %% to indicate additional items in the array are not allowed, or it can
 %% be a schema that defines the schema of the additional items.
 %% @end
-      case get_path(?ADDITIONALITEMS, JsonSchema) of
+      case get_value(?ADDITIONALITEMS, JsonSchema) of
         []    -> State;
         true  -> State;
         false ->
@@ -665,7 +665,7 @@ check_items_fun(Tuples, State) ->
 %% @private
 check_dependencies(Value, Dependencies, State) ->
   lists:foldl( fun({DependencyName, DependencyValue}, CurrentState) ->
-                   case get_path(DependencyName, Value) of
+                   case get_value(DependencyName, Value) of
                      [] -> CurrentState;
                      _  -> check_dependency_value( Value
                                                  , DependencyValue
@@ -679,7 +679,7 @@ check_dependencies(Value, Dependencies, State) ->
 
 %% @private
 check_dependency_value(Value, Dependency, State) when is_binary(Dependency) ->
-  case get_path(Dependency, Value) of
+  case get_value(Dependency, Value) of
     [] ->
       handle_data_invalid({?missing_dependency, Dependency}, Value, State);
     _  ->
@@ -1028,7 +1028,7 @@ compare_objects(Value1, Value2) ->
 %% @private
 compare_properties(Value1, Value2) ->
   lists:all( fun({PropertyName1, PropertyValue1}) ->
-                 case get_path(PropertyName1, Value2) of
+                 case get_value(PropertyName1, Value2) of
                    []             -> false;
                    PropertyValue2 -> is_equal(PropertyValue1, PropertyValue2)
                  end
@@ -1112,8 +1112,8 @@ default_error_handler(Error, ErrorList, AllowedErrors) ->
 
 %%=============================================================================
 %% @private
-get_path(Key, Schema) ->
-  jesse_json_path:path(Key, Schema).
+get_value(Key, Schema) ->
+  jesse_json_path:value(Key, Schema, []).
 
 %% @private
 unwrap(Value) ->
