@@ -88,6 +88,9 @@
 -define(wrong_length,                'wrong_length').
 -define(wrong_format,                'wrong_format').
 
+%%
+-define(not_found, not_found).
+
 %% Internal datastructures
 -record( state
        , { original_schema :: jesse:json_term()
@@ -126,8 +129,8 @@ result(State) ->
 -spec get_schema_id(Schema :: jesse:json_term()) -> string().
 get_schema_id(Schema) ->
   case get_value(?ID, Schema) of
-    [] -> throw({schema_invalid, Schema, missing_id_field});
-    Id -> erlang:binary_to_list(Id)
+    ?not_found -> throw({schema_invalid, Schema, missing_id_field});
+    Id         -> erlang:binary_to_list(Id)
   end.
 
 %% @doc A naive check if the given data is a json object.
@@ -149,7 +152,8 @@ is_json_object(_)                                   -> false.
 
 %%% Internal functions
 
-%% @doc Adds Property to the current path and checks the value using check_value/3
+%% @doc Adds Property to the current path and checks the value
+%% using check_value/3
 %% @private
 check_value(Property, Value, Attrs, State) ->
   %% Add Property to path
@@ -428,7 +432,7 @@ check_properties(Value, Properties, State) ->
   TmpState
     = lists:foldl( fun({PropertyName, PropertySchema}, CurrentState) ->
                        case get_value(PropertyName, Value) of
-                         [] ->
+                         ?not_found ->
 %% @doc 5.7.  required
 %%
 %% This attribute indicates if the instance must have a value, and not
@@ -504,8 +508,9 @@ check_match({PropertyName, PropertyValue}, {Pattern, Schema}, State) ->
 %% @private
 check_additional_properties(Value, false, State) ->
   JsonSchema        = get_current_schema(State),
-  Properties        = get_value(?PROPERTIES, JsonSchema),
-  PatternProperties = get_value(?PATTERNPROPERTIES, JsonSchema),
+  Properties        = empty_if_not_found(get_value(?PROPERTIES, JsonSchema)),
+  PatternProperties = empty_if_not_found(get_value( ?PATTERNPROPERTIES
+                                                  , JsonSchema)),
   case get_additional_properties(Value, Properties, PatternProperties) of
     []      -> State;
     _Extras ->
@@ -515,8 +520,9 @@ check_additional_properties(_Value, true, State) ->
   State;
 check_additional_properties(Value, AdditionalProperties, State) ->
   JsonSchema        = get_current_schema(State),
-  Properties        = get_value(?PROPERTIES, JsonSchema),
-  PatternProperties = get_value(?PATTERNPROPERTIES, JsonSchema),
+  Properties        = empty_if_not_found(get_value(?PROPERTIES, JsonSchema)),
+  PatternProperties = empty_if_not_found(get_value( ?PATTERNPROPERTIES
+                                                  , JsonSchema)),
   case get_additional_properties(Value, Properties, PatternProperties) of
     []     -> State;
     Extras ->
@@ -537,8 +543,9 @@ check_additional_properties(Value, AdditionalProperties, State) ->
       set_current_schema(TmpState, JsonSchema)
   end.
 
-%% @doc Returns the additional properties as a list of pairs containing the name and the value of
-%% all properties not covered by Properties or PatternProperties.
+%% @doc Returns the additional properties as a list of pairs containing the name
+%% and the value of all properties not covered by Properties
+%% or PatternProperties.
 %% @private
 get_additional_properties(Value, Properties, PatternProperties) ->
   ValuePropertiesNames  = [Name || {Name, _} <- unwrap(Value)],
@@ -586,7 +593,11 @@ check_items(Value, Items, State) ->
     true ->
       {_, TmpState} = lists:foldl( fun(Item, {Index, CurrentState}) ->
                                        { Index + 1
-                                       , check_value(Index, Item, unwrap(Items), CurrentState)
+                                       , check_value( Index
+                                                    , Item
+                                                    , unwrap(Items)
+                                                    , CurrentState
+                                                    )
                                        }
                                    end
                                  , {0, set_current_schema(State, Items)}
@@ -614,9 +625,9 @@ check_items_array(Value, Items, State) ->
 %% be a schema that defines the schema of the additional items.
 %% @end
       case get_value(?ADDITIONALITEMS, JsonSchema) of
-        []    -> State;
-        true  -> State;
-        false ->
+        ?not_found -> State;
+        true       -> State;
+        false      ->
           handle_data_invalid(?no_extra_items_allowed, Value, State);
         AdditionalItems ->
           ExtraSchemas = lists:duplicate(NExtra, AdditionalItems),
@@ -666,11 +677,11 @@ check_items_fun(Tuples, State) ->
 check_dependencies(Value, Dependencies, State) ->
   lists:foldl( fun({DependencyName, DependencyValue}, CurrentState) ->
                    case get_value(DependencyName, Value) of
-                     [] -> CurrentState;
-                     _  -> check_dependency_value( Value
-                                                 , DependencyValue
-                                                 , CurrentState
-                                                 )
+                     ?not_found -> CurrentState;
+                     _          -> check_dependency_value( Value
+                                                         , DependencyValue
+                                                         , CurrentState
+                                                         )
                    end
                end
              , State
@@ -680,9 +691,9 @@ check_dependencies(Value, Dependencies, State) ->
 %% @private
 check_dependency_value(Value, Dependency, State) when is_binary(Dependency) ->
   case get_value(Dependency, Value) of
-    [] ->
+    ?not_found ->
       handle_data_invalid({?missing_dependency, Dependency}, Value, State);
-    _  ->
+    _          ->
       State
   end;
 check_dependency_value(Value, Dependency, State) ->
@@ -1029,7 +1040,7 @@ compare_objects(Value1, Value2) ->
 compare_properties(Value1, Value2) ->
   lists:all( fun({PropertyName1, PropertyValue1}) ->
                  case get_value(PropertyName1, Value2) of
-                   []             -> false;
+                   ?not_found     -> false;
                    PropertyValue2 -> is_equal(PropertyValue1, PropertyValue2)
                  end
              end
@@ -1113,11 +1124,15 @@ default_error_handler(Error, ErrorList, AllowedErrors) ->
 %%=============================================================================
 %% @private
 get_value(Key, Schema) ->
-  jesse_json_path:value(Key, Schema, []).
+  jesse_json_path:value(Key, Schema, ?not_found).
 
 %% @private
 unwrap(Value) ->
   jesse_json_path:unwrap_value(Value).
+
+%% @private
+empty_if_not_found(?not_found) -> [];
+empty_if_not_found(Value)      -> Value.
 
 %%=============================================================================
 %% @doc This check is needed since objects in `jsx' are lists (proplists)

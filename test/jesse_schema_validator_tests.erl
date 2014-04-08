@@ -92,7 +92,9 @@ data_invalid_test() ->
 dots_used_in_keys_test() ->
   Schema      = {[ {<<"type">>, <<"object">>}
                  , {<<"properties">>
-                   , {[{<<"3.4.5.6.7">>, {[{<<"type">>, <<"string">>}]}}]}
+                   , {[ {<<"3.4.5.6.7">>, {[{<<"type">>, <<"string">>}]}}
+                      , {<<"additionalProperties">>, false}
+                      ]}
                    }]},
   ValidJson   = {[{<<"3.4.5.6.7">>, <<"Hello world!">>}]},
   InvalidJson = {[{<<"3.4.5.6.7">>, true}]},
@@ -104,6 +106,17 @@ dots_used_in_keys_test() ->
               , jesse_schema_validator:validate(Schema, InvalidJson, [])
               ).
 
+empty_list_as_valid_value_for_string_test() ->
+  StringSchema = {[{<<"type">>, <<"string">>}]},
+
+  EmptyListSchema = {[ {<<"type">>, <<"object">>}
+                     , {<<"properties">>
+                       , {[{<<"foo">>, StringSchema}]}}
+                     ]},
+  ?assertThrow(
+     [{data_invalid, StringSchema, wrong_type, [], [<<"foo">>]}],
+     jesse_schema_validator:validate(EmptyListSchema, [{<<"foo">>, []}], [])
+    ).
 
 %%% Local Variables:
 %%% erlang-indent-level: 2
