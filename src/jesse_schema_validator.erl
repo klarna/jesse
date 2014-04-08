@@ -513,8 +513,17 @@ check_additional_properties(Value, false, State) ->
                                                   , JsonSchema)),
   case get_additional_properties(Value, Properties, PatternProperties) of
     []      -> State;
-    _Extras ->
-      handle_data_invalid(?no_extra_properties_allowed, Value, State)
+    Extras ->
+      CurrentPath = State#state.current_path,
+      lists:foldl(
+        fun({Property, _}, State1) ->
+            State2 = State1#state{current_path = [Property | CurrentPath]},
+            State3 = handle_data_invalid(?no_extra_properties_allowed,
+                                         Value, State2),
+            State3#state{current_path=CurrentPath}
+        end,
+        State,
+        Extras)
   end;
 check_additional_properties(_Value, true, State) ->
   State;
