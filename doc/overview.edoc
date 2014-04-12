@@ -1,4 +1,4 @@
 @author Alexander Dergachev
 @copyright 2013 Klarna AB
-@version 0.5.1
+@version 1.0.0
 @title A simple Json schema validator for Erlang
