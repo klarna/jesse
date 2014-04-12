@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+1.0.0
+-----
+*   start using semantic versioning (http://semver.org/)
+*   minor improvements
+
 0.5.0
 -----
 
