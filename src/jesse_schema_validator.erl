@@ -157,10 +157,10 @@ is_json_object(_)                                   -> false.
 %% @private
 check_value(Property, Value, Attrs, State) ->
   %% Add Property to path
-  State1 = State#state{current_path = [Property | State#state.current_path]},
+  State1 = add_to_path(State, Property),
   State2 = check_value(Value, Attrs, State1),
   %% Reset path again
-  State2#state{current_path = State#state.current_path}.
+  remove_last_from_path(State2).
 
 %% @doc Goes through attributes of the given schema `JsonSchema' and
 %% validates the value `Value' against them.
@@ -512,18 +512,19 @@ check_additional_properties(Value, false, State) ->
   PatternProperties = empty_if_not_found(get_value( ?PATTERNPROPERTIES
                                                   , JsonSchema)),
   case get_additional_properties(Value, Properties, PatternProperties) of
-    []      -> State;
+    []     -> State;
     Extras ->
-      CurrentPath = State#state.current_path,
-      lists:foldl(
-        fun({Property, _}, State1) ->
-            State2 = State1#state{current_path = [Property | CurrentPath]},
-            State3 = handle_data_invalid(?no_extra_properties_allowed,
-                                         Value, State2),
-            State3#state{current_path=CurrentPath}
-        end,
-        State,
-        Extras)
+      lists:foldl( fun({Property, _}, State1) ->
+                       State2
+                         = handle_data_invalid( ?no_extra_properties_allowed
+                                              , Value
+                                              , add_to_path(State1, Property)
+                                              ),
+                       remove_last_from_path(State2)
+                   end
+                 , State
+                 , Extras
+                 )
   end;
 check_additional_properties(_Value, true, State) ->
   State;
@@ -1101,6 +1102,15 @@ set_error_list(State, ErrorList) ->
 %% @private
 get_allowed_errors(#state{allowed_errors = AllowedErrors}) ->
   AllowedErrors.
+
+%% @private
+add_to_path(State, Property) ->
+  CurrentPath = State#state.current_path,
+  State#state{current_path = [Property | CurrentPath]}.
+
+%% @private
+remove_last_from_path(State = #state{current_path = [_Property | Path]}) ->
+  State#state{current_path = Path}.
 
 %% @private
 handle_data_invalid(Info, Value, State) ->
