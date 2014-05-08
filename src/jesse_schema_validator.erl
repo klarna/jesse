@@ -316,6 +316,18 @@ check_value(Value, [{?EXTENDS, Extends} | Attrs], State) ->
   check_value(Value, Attrs, NewState);
 check_value(_Value, [], State) ->
   State;
+check_value({struct, [{Key, Value}]}, [{Key, {struct, Attr}} | _Attrs], State) ->
+%% this is for mochijson
+  check_value(Value, Attr, State);
+check_value({struct, [{Key, {struct, Value}}]}, [{Key, {struct, Attr}} | _Attrs], State) ->
+%% this is for mochijson
+  check_value(Value, Attr, State);
+check_value({[{Key, {Value}}]}, [{Key, {Attr}} | _Attrs], State) ->
+%% this is for jiffy
+  check_value(Value, Attr, State);
+check_value({[{Key, Value}]}, [{Key, {Attr}} | _Attrs], State) ->
+%% this is for jiffy
+  check_value(Value, Attr, State);
 check_value(Value, [_Attr | Attrs], State) ->
   check_value(Value, Attrs, State).
 
