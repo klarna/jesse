@@ -1,0 +1,37 @@
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "type": "object",
+    "properties": {
+        "live": {
+            "type": "boolean"
+        },
+        "books" : {
+            "type": "object",
+            "properties": {
+                "connection" : {
+                    "type": "object",
+                    "properties": {
+			"patterns" : {
+			    "minItems" : 1,
+			    "required" : true,
+			    "acl" : "any",
+			    "type" : "array",
+			    "items" : {
+				"article" : {
+				    "type" : "object",
+				    "required" : true,
+				    "properties" : {
+					"country" : {
+					    "required" : true,
+					    "enum" : ["EUR", "USD", "RUB"]
+					}
+				    }
+				}
+			    }
+			}
+                    }
+                }
+            }
+        }
+    }
+}

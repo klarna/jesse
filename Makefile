@@ -38,13 +38,13 @@ deps/jiffy:
 submodules:
 	git submodule update --init
 
-test: clean deps/jiffy submodules app eunit ct
+test: clean deps/jiffy submodules app eunit ct 
 
 eunit:
 	@$(REBAR) -C rebar.tests.config eunit skip_deps=true
 
 ct:
-	@$(REBAR) -C rebar.tests.config ct skip_deps=true suites=jesse_tests_draft3
+	@$(REBAR) -C rebar.tests.config ct skip_deps=true suites=jesse_tests_draft3,nesting_objects
 
 # Dialyzer.
 

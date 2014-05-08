@@ -1,0 +1,15 @@
+{
+   "live": true,
+   "books" : {
+        "connection" :
+        {
+	  "patterns" : [
+	    {
+	      "article" : {
+	        "country" : "RUBBER"
+	      }
+	    }
+	  ]
+        }
+	}
+}
