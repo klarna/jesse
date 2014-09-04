@@ -817,7 +817,7 @@ check_max_items(Value, _MaxItems, State) ->
 %% </ul>
 %% @private
 check_unique_items([], true, State) ->
-    handle_data_invalid(?not_unique, [], State);
+    State;
 check_unique_items(Value, true, State) ->
   try
     lists:foldl( fun(_Item, []) ->
