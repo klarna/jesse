@@ -33,7 +33,7 @@ clean-docs:
 
 deps/jiffy:
 	@$(REBAR) -C rebar.tests.config get-deps
-	cd deps/jiffy && $(REBAR) compile
+	cd deps/jiffy && make
 
 submodules:
 	git submodule update --init
