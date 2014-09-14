@@ -49,6 +49,7 @@
                         , Schema :: json_term()
                         , Error  :: error_type()
                         , Data   :: json_term()
+                        , Path   :: [binary()]
                         }.
 
 -type error_type() :: {'missing_id_field', Field :: binary()}
