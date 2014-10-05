@@ -39,44 +39,15 @@
              ]).
 
 -type json_term() :: term().
--type error()     :: {error, [error_reason()]}.
-
--type error_reason() :: { 'schema_invalid'
-                        , Schema :: json_term()
-                        , Error :: error_type()
-                        }
-                      | { 'data_invalid'
-                        , Schema :: json_term()
-                        , Error  :: error_type()
-                        , Data   :: json_term()
-                        , Path   :: [binary()]
-                        }.
-
--type error_type() :: {'missing_id_field', Field :: binary()}
-                    | {'missing_required_property', Name :: binary()}
-                    | {'missing_dependency', Name :: binary()}
-                    | 'no_match'
-                    | 'no_extra_properties_allowed'
-                    | 'no_extra_items_allowed'
-                    | 'not_enought_items'
-                    | 'not_allowed'
-                    | {'not_unique', Value :: json_term()}
-                    | 'not_in_range'
-                    | 'not_divisible'
-                    | 'wrong_type'
-                    | {'wrong_type_items', Items :: json_term()}
-                    | {'wrong_type_dependency', Dependency :: json_term()}
-                    | 'wrong_size'
-                    | 'wrong_length'
-                    | 'wrong_format'.
 
 %%% API
 %% @doc Adds a schema definition `Schema' to in-memory storage associated with
 %% a key `Key'. It will overwrite an existing schema with the same key if
 %% there is any.
--spec add_schema(Key :: any(), Schema :: json_term()) -> ok | error().
+-spec add_schema(Key :: any(), Schema :: json_term()) ->
+                    ok | jesse_error:error().
 add_schema(Key, Schema) ->
-  ValidationFun = fun jesse_schema_validator:is_json_object/1,
+  ValidationFun = fun jesse_lib:is_json_object/1,
   MakeKeyFun    = fun(_) -> Key end,
   jesse_database:add(Schema, ValidationFun, MakeKeyFun).
 
@@ -86,7 +57,7 @@ add_schema(Key, Schema) ->
 -spec add_schema( Key       :: any()
                 , Schema    :: binary()
                 , Options   :: [{Key :: atom(), Data :: any()}]
-                ) -> ok | error().
+                ) -> ok | jesse_error:error().
 add_schema(Key, Schema, Options) ->
   try
     ParserFun    = proplists:get_value(parser_fun, Options, fun(X) -> X end),
@@ -107,7 +78,7 @@ del_schema(Key) ->
 %%
 %% Equivalent to `load_schemas(Path, ParserFun, ValidationFun, MakeKeyFun)'
 %% where `ValidationFun' is `fun jesse_json:is_json_object/1' and
-%% `MakeKeyFun' is `fun jesse_schema_validator:get_schema_id/1'. In this case
+%% `MakeKeyFun' is `fun jesse_lib:get_schema_id/1'. In this case
 %% the key will be the value of `id' attribute from the given schemas.
 -spec load_schemas( Path      :: string()
                   , ParserFun :: fun((binary()) -> json_term())
@@ -115,8 +86,8 @@ del_schema(Key) ->
 load_schemas(Path, ParserFun) ->
   load_schemas( Path
               , ParserFun
-              , fun jesse_schema_validator:is_json_object/1
-              , fun jesse_schema_validator:get_schema_id/1
+              , fun jesse_lib:is_json_object/1
+              , fun jesse_lib:get_schema_id/1
               ).
 
 %% @doc Loads schema definitions from filesystem to in-memory storage.
@@ -147,7 +118,7 @@ load_schemas(Path, ParserFun, ValidationFun, MakeKeyFun) ->
 -spec validate( Schema :: any()
               , Data   :: json_term() | binary()
               ) -> {ok, json_term()}
-                 | error().
+                 | jesse_error:error().
 validate(Schema, Data) ->
   validate(Schema, Data, []).
 
@@ -163,7 +134,7 @@ validate(Schema, Data) ->
               , Data     :: json_term() | binary()
               , Options  :: [{Key :: atom(), Data :: any()}]
               ) -> {ok, json_term()}
-                 | error().
+                 | jesse_error:error().
 validate(Schema, Data, Options) ->
   try
     ParserFun  = proplists:get_value(parser_fun, Options, fun(X) -> X end),
@@ -179,7 +150,7 @@ validate(Schema, Data, Options) ->
 -spec validate_with_schema( Schema :: json_term() | binary()
                           , Data   :: json_term() | binary()
                           ) -> {ok, json_term()}
-                             | error().
+                             | jesse_error:error().
 validate_with_schema(Schema, Data) ->
   validate_with_schema(Schema, Data, []).
 
@@ -195,7 +166,7 @@ validate_with_schema(Schema, Data) ->
                           , Data     :: json_term() | binary()
                           , Options  :: [{Key :: atom(), Data :: any()}]
                           ) -> {ok, json_term()}
-                             | error().
+                             | jesse_error:error().
 validate_with_schema(Schema, Data, Options) ->
   try
     ParserFun    = proplists:get_value(parser_fun, Options, fun(X) -> X end),
