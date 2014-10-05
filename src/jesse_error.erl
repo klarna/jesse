@@ -59,7 +59,8 @@
                     | {'wrong_type_dependency', jesse:json_term()}
                     | 'wrong_size'
                     | 'wrong_length'
-                    | 'wrong_format'.
+                    | 'wrong_format'
+                    | {'schema_unsupported', binary()}.
 
 %% Includes
 -include("jesse_schema_validator.hrl").

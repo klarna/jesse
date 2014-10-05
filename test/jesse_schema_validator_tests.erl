@@ -159,6 +159,19 @@ empty_list_as_valid_value_for_string_test() ->
      jesse_schema_validator:validate(EmptyListSchema, [{<<"foo">>, []}], [])
     ).
 
+schema_unsupported_test() ->
+  SupportedSchema = {[{<<"$schema">>, <<"http://json-schema.org/draft-03/schema#">>}]},
+  UnsupportedSchema = {[{<<"$schema">>, <<"http://json-schema.org/draft-04/schema#">>}]},
+
+  Json = {[{<<"Doesn't matter">>}]},
+  ?assertEqual( {ok, Json}
+              , jesse_schema_validator:validate(SupportedSchema, Json, [])
+              ),
+  ?assertThrow([{schema_invalid, UnsupportedSchema,
+                 {schema_unsupported, <<"http://json-schema.org/draft-04/schema#">>}}]
+              , jesse_schema_validator:validate(UnsupportedSchema, Json, [])
+              ).
+
 %%% Local Variables:
 %%% erlang-indent-level: 2
 %%% End:

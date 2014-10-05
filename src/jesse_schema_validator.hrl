@@ -83,6 +83,7 @@
 -define(wrong_size,                  'wrong_size').
 -define(wrong_length,                'wrong_length').
 -define(wrong_format,                'wrong_format').
+-define(schema_unsupported,          'schema_unsupported').
 
 %%
 -define(not_found, not_found).
