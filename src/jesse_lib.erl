@@ -44,7 +44,7 @@ empty_if_not_found(Value)      -> Value.
 %% will be thrown.
 -spec get_schema_id(Schema :: jesse:json_term()) -> string().
 get_schema_id(Schema) ->
-  case jesse_json_path:get_value(?ID, Schema, ?not_found) of
+  case jesse_json_path:value(?ID, Schema, ?not_found) of
     ?not_found -> throw({schema_invalid, Schema, missing_id_field});
     Id         -> erlang:binary_to_list(Id)
   end.
