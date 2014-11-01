@@ -1,4 +1,6 @@
 %%%=============================================================================
+%% Copyright 2014 Klarna AB
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -11,8 +13,6 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
-%% @copyright 2013 Klarna AB
-%% @author Alexander Dergachev <alexander.dergachev@klarna.com>
 %%
 %% @doc jesse test suite which covers Draft 03. It uses JSON-Schema-Test-Suite
 %% (https://github.com/json-schema/JSON-Schema-Test-Suite) as the test data.
