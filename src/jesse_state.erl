@@ -32,6 +32,7 @@
         , get_error_list/1
         , new/2
         , remove_last_from_path/1
+        , set_allowed_errors/2
         , set_current_schema/2
         , set_error_list/2
         ]).
@@ -125,6 +126,12 @@ new(JsonSchema, Options) ->
 -spec remove_last_from_path(State :: state()) -> state().
 remove_last_from_path(State = #state{current_path = [_Property | Path]}) ->
   State#state{current_path = Path}.
+
+%% @doc Getter for `allowed_errors'.
+-spec set_allowed_errors( State :: state()
+                        , AllowedErrors :: non_neg_integer()) -> state().
+set_allowed_errors(#state{} = State, AllowedErrors) ->
+  State#state{allowed_errors = AllowedErrors}.
 
 %% @doc Setter for `current_schema'.
 -spec set_current_schema( State     :: state()
