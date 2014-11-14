@@ -129,7 +129,8 @@ remove_last_from_path(State = #state{current_path = [_Property | Path]}) ->
 
 %% @doc Getter for `allowed_errors'.
 -spec set_allowed_errors( State :: state()
-                        , AllowedErrors :: non_neg_integer()) -> state().
+                        , AllowedErrors :: non_neg_integer()
+                        ) -> state().
 set_allowed_errors(#state{} = State, AllowedErrors) ->
   State#state{allowed_errors = AllowedErrors}.
 

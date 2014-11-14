@@ -823,8 +823,7 @@ check_divisible_by(Value, DivisibleBy, State) ->
 %% @private
 check_disallow(Value, Disallow, State) ->
   try check_type(Value, Disallow, jesse_state:new(Disallow, [])) of
-      _ ->
-      handle_data_invalid(?not_allowed, Value, State)
+    _ -> handle_data_invalid(?not_allowed, Value, State)
   catch
     %% FIXME: don't like to have these error related macros
     %% here.
