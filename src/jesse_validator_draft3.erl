@@ -279,11 +279,11 @@ check_union_type(Value, UnionType, State) ->
                    case jesse_lib:is_json_object(Type) of
                      true  ->
                        %% case when there's a schema in the array,
-                       %% then we need to validate against
-                       %% that schema
+                       %% then we need to validate against that schema
+                       NewState = jesse_state:set_allowed_errors(State, 0),
                        _ = jesse_schema_validator:validate_with_state( Type
                                                                      , Value
-                                                                     , State
+                                                                     , NewState
                                                                      ),
                        true;
                      false ->
