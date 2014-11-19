@@ -280,7 +280,8 @@ check_union_type(Value, UnionType, State) ->
                      true  ->
                        %% case when there's a schema in the array,
                        %% then we need to validate against that schema
-                       NewState = jesse_state:set_allowed_errors(State, 0),
+                       NewState0 = jesse_state:set_allowed_errors(State, 0),
+                       NewState  = jesse_state:set_current_schema(NewState0, Type),
                        _ = jesse_schema_validator:validate_with_state( Type
                                                                      , Value
                                                                      , NewState
