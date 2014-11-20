@@ -258,14 +258,14 @@ check_type(Value, Type, State) ->
   end.
 
 %% @private
-is_type_valid(Value, ?STRING,  _State)   -> is_binary(Value);
-is_type_valid(Value, ?NUMBER,  _State)   -> is_number(Value);
-is_type_valid(Value, ?INTEGER, _State)  -> is_integer(Value);
-is_type_valid(Value, ?BOOLEAN, _State)  -> is_boolean(Value);
-is_type_valid(Value, ?OBJECT,  _State)   -> jesse_lib:is_json_object(Value);
-is_type_valid(Value, ?ARRAY,   _State)    -> jesse_lib:is_array(Value);
-is_type_valid(Value, ?NULL,    _State)     -> jesse_lib:is_null(Value);
-is_type_valid(_Value, ?ANY,    _State)     -> true;
+is_type_valid(Value, ?STRING, _State)  -> is_binary(Value);
+is_type_valid(Value, ?NUMBER, _State)  -> is_number(Value);
+is_type_valid(Value, ?INTEGER, _State) -> is_integer(Value);
+is_type_valid(Value, ?BOOLEAN, _State) -> is_boolean(Value);
+is_type_valid(Value, ?OBJECT, _State)  -> jesse_lib:is_json_object(Value);
+is_type_valid(Value, ?ARRAY, _State)   -> jesse_lib:is_array(Value);
+is_type_valid(Value, ?NULL, _State)    -> jesse_lib:is_null(Value);
+is_type_valid(_Value, ?ANY, _State)    -> true;
 is_type_valid(Value, UnionType, State) ->
   case jesse_lib:is_array(UnionType) of
     true  -> check_union_type(Value, UnionType, State);
@@ -280,7 +280,7 @@ check_union_type(Value, UnionType, State) ->
                      true  ->
                        %% case when there's a schema in the array,
                        %% then we need to validate against that schema
-                       NewState = jesse_state:set_allowed_errors(State, 0),
+                       NewState = jesse_state:new(Type, []),
                        _ = jesse_schema_validator:validate_with_state( Type
                                                                      , Value
                                                                      , NewState
@@ -290,10 +290,10 @@ check_union_type(Value, UnionType, State) ->
                        is_type_valid(Value, Type, State)
                    end
                  catch
-                   %% FIXME: don't like to have these error related macros
-                   %% here.
+                   %% FIXME: don't like to have these error related
+                   %% macros here.
                    throw:[{?data_invalid, _, _, _, _} | _] -> false;
-                   throw:[{?schema_invalid, _, _} | _]  -> false
+                   throw:[{?schema_invalid, _, _} | _]     -> false
                  end
              end
            , UnionType
