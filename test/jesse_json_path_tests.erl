@@ -148,3 +148,31 @@ to_proplist_readme_test() ->
                                     [{<<"foo">>,
                                       {struct,
                                        [{<<"bar">>, <<"baz">>}]}}]})).
+
+path_default_test() ->
+    %% This shouldn't hit the default path at all
+    ?assertEqual(
+       1,
+       jesse_json_path:path([derp], [{derp, 1}])),
+    ?assertEqual(
+       1,
+       jesse_json_path:path([derp], [{derp, 1}], unused)),
+    %% The standard default is []
+    ?assertEqual(
+       [],
+       jesse_json_path:path([foo], [{derp, 1}])),
+    ?assertEqual(
+       default,
+       jesse_json_path:path([foo], [{derp, 1}], default)),
+    %% The default is *not* recursive
+    ?assertEqual(
+       [{bar, baz}],
+       jesse_json_path:path([foo, bar], [], [{bar, baz}])),
+    ?assertEqual(
+       [{foo, bar}],
+       jesse_json_path:path([foo, bar], [], [{foo, bar}])).
+
+jsx_object_test() ->
+    ?assertEqual(
+       not_found,
+       jesse_json_path:value(<<"foo">>, [{}], not_found)).
