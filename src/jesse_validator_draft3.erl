@@ -185,6 +185,9 @@ check_value(Value, [{?DISALLOW, Disallow} | Attrs], State) ->
 check_value(Value, [{?EXTENDS, Extends} | Attrs], State) ->
   NewState = check_extends(Value, Extends, State),
   check_value(Value, Attrs, NewState);
+check_value(Value, [{?_REF, RefSchemaURI} | Attrs], State) ->
+  NewState = check_ref(Value, RefSchemaURI, State),
+  check_value(Value, Attrs, NewState);
 check_value(_Value, [], State) ->
   State;
 check_value(Value, [_Attr | Attrs], State) ->
@@ -860,6 +863,35 @@ check_extends_array(Value, Extends, State) ->
              , State
              , Extends
              ).
+
+%% @private
+check_ref(Value, <<"#", LocalPath/binary>>, State) ->
+  Keys = binary:split(LocalPath, <<"/">>, ['global']),
+  OriginalSchema = jesse_state:get_original_schema(State),
+
+  case local_schema(OriginalSchema, Keys) of
+    ?not_found -> State;
+    LocalSchema -> check_ref_schema(Value, LocalSchema, State)
+  end;
+check_ref(Value, RefSchemaURI, State) ->
+  case jesse_state:find_schema(State, RefSchemaURI) of
+    ?not_found -> State;
+    RefSchema -> check_ref_schema(Value, RefSchema, State)
+  end.
+
+%% @private
+check_ref_schema(Value, RefSchema, State) ->
+  TmpState = check_value(Value, unwrap(RefSchema), set_current_schema(State, RefSchema)),
+  set_current_schema(TmpState, get_current_schema(State)).
+
+local_schema(Schema, []) -> Schema;
+local_schema(Schema, [<<>> | Keys]) -> local_schema(Schema, Keys);
+local_schema(Schema, [Key | Keys]) ->
+  SubSchema = get_value(Key, Schema),
+  case jesse_lib:is_json_object(SubSchema) of
+    true -> local_schema(SubSchema, Keys);
+    false -> ?not_found
+  end.
 
 %%=============================================================================
 %% @doc Returns `true' if given values (instance) are equal, otherwise `false'
