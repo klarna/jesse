@@ -865,17 +865,17 @@ check_extends_array(Value, Extends, State) ->
              ).
 
 %% @private
-check_ref(Value, <<"#", LocalPath/binary>>, State) ->
+check_ref(Value, <<"#", LocalPath/binary>> = RefSchemaURI, State) ->
   Keys = binary:split(LocalPath, <<"/">>, ['global']),
   OriginalSchema = jesse_state:get_original_schema(State),
 
   case local_schema(OriginalSchema, Keys) of
-    ?not_found -> State;
+    ?not_found -> handle_schema_invalid({'schema_unsupported', RefSchemaURI}, State);
     LocalSchema -> check_ref_schema(Value, LocalSchema, State)
   end;
 check_ref(Value, RefSchemaURI, State) ->
   case jesse_state:find_schema(State, RefSchemaURI) of
-    ?not_found -> State;
+    ?not_found -> handle_schema_invalid({'schema_unsupported', RefSchemaURI}, State);
     RefSchema -> check_ref_schema(Value, RefSchema, State)
   end.
 
