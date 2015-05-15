@@ -44,7 +44,7 @@ eunit:
 	@$(REBAR) -C rebar.tests.config eunit skip_deps=true
 
 ct:
-	@$(REBAR) -C rebar.tests.config ct skip_deps=true suites=jesse_tests_draft3
+	@$(REBAR) -C rebar.tests.config ct skip_deps=true suites="jesse_tests_draft3,jesse_tests_draft4"
 
 # Dialyzer.
 

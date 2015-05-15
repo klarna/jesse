@@ -86,9 +86,7 @@ all() ->
 
 %%%
 init_per_suite(Config) ->
-  TestsDir  = filename:join(?config(data_dir, Config), ?TESTS_DIR),
-  TestSpecs = load_test_specs(TestsDir),
-  TestSpecs ++ Config.
+  load_test_specs() ++ Config.
 
 end_per_suite(_Config) ->
   ok.
@@ -227,7 +225,8 @@ run_test_set(Schema, TestSet) ->
                , TestSet
                ).
 
-load_test_specs(TestsDir) ->
+load_test_specs() ->
+  TestsDir = filename:join(os:getenv("TEST_DIR"), ?TESTS_DIR),
   FileList = filelib:wildcard(TestsDir ++ "/*.json"),
   lists:map( fun(Filename) ->
                  {ok, Bin} = file:read_file(Filename),

@@ -47,6 +47,13 @@
 -define(EXTENDS,              <<"extends">>).
 -define(ID,                   <<"id">>).
 -define(_REF,                 <<"$ref">>).                 % NOT IMPLEMENTED YET
+-define(ALLOF,                <<"allOf">>).
+-define(ANYOF,                <<"anyOf">>).
+-define(ONEOF,                <<"oneOf">>).
+-define(NOT,                  <<"not">>).
+-define(MULTIPLEOF,           <<"multipleOf">>).
+-define(MAXPROPERTIES,        <<"maxProperties">>).
+-define(MINPROPERTIES,        <<"minProperties">>).
 
 %% Constant definitions for Json types
 -define(ANY,                  <<"any">>).
@@ -61,6 +68,7 @@
 %% Supported $schema attributes
 -define(default_schema_ver, <<"http://json-schema.org/draft-03/schema#">>).
 -define(json_schema_draft3, <<"http://json-schema.org/draft-03/schema#">>).
+-define(json_schema_draft4, <<"http://json-schema.org/draft-04/schema#">>).
 
 %%
 -define(data_invalid,                'data_invalid').
