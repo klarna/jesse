@@ -30,6 +30,8 @@
         , additionalProperties/1
         , allOf/1
         , anyOf/1
+        , default/1
+        %%, definitions/1
         , dependencies/1
         , enum/1
         , items/1
@@ -55,6 +57,7 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include("../src/jesse_schema_validator.hrl").
 
 -define(TESTS_DIR, "JSON-Schema-Test-Suite/tests/draft4").
 
@@ -70,6 +73,8 @@ all() ->
   , additionalProperties
   , allOf
   , anyOf
+  , default
+  %%, definitions
   , dependencies
   , enum
   , items
@@ -113,6 +118,12 @@ allOf(Config) ->
 
 anyOf(Config) ->
   do_test("anyOf", Config).
+
+default(Config) ->
+  do_test("default", Config).
+
+definitions(Config) ->
+  do_test("definitions", Config).
 
 dependencies(Config) ->
   do_test("dependencies", Config).
@@ -189,7 +200,8 @@ run_tests(Specs) ->
                      Description = get_path(?DESCRIPTION, Spec),
                      Schema      = get_path(?SCHEMA, Spec),
                      TestSet     = get_path(?TESTS, Spec),
-                     io:format("** Test set: ~s~n", [Description]),
+                     ct:pal("** Test set: ~s~n** Schema: ~p~n",
+                            [Description, Schema]),
                      run_test_set(Schema, TestSet)
                  end
                , Specs
@@ -199,12 +211,18 @@ run_test_set(Schema, TestSet) ->
   lists:foreach( fun(Test) ->
                      Description = get_path(?DESCRIPTION, Test),
                      TestData    = get_path(?DATA, Test),
-                     io:format("* Test case: ~s~n", [Description]),
-                     Result = jesse:validate_with_schema(Schema, TestData),
-                     io:format("Result: ~p~n", [Result]),
-                     case get_path(?VALID, Test) of
-                       true  -> {ok, TestData} = Result;
-                       false -> {error, _} = Result
+                     ct:pal("* Test case: ~s~n", [Description]),
+                     Opts = [{default_schema_ver, ?json_schema_draft4}],
+                     try jesse:validate_with_schema(Schema, TestData, Opts) of
+                         Result ->
+                             ct:pal("Result: ~p~n", [Result]),
+                             case get_path(?VALID, Test) of
+                                 true  -> {ok, TestData} = Result;
+                                 false -> {error, _} = Result
+                             end
+                     catch C:E ->
+                               ct:pal("Error: ~p:~p~nStacktrace: ~p~n",
+                                      [C, E, erlang:get_stacktrace()])
                      end
                  end
                , TestSet

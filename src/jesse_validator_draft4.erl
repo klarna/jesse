@@ -85,8 +85,12 @@ check_value( Value
            , State
            ) ->
   check_value(Value, Attrs, State);
-check_value(Value, [{?REQUIRED, _Required} | Attrs], State) ->
-  check_value(Value, Attrs, State);
+check_value(Value, [{?REQUIRED, Required} | Attrs], State) ->
+  NewState = case jesse_lib:is_json_object(Value) of
+               true  -> check_required(Value, Required, State);
+               false -> State
+             end,
+  check_value(Value, Attrs, NewState);
 check_value(Value, [{?DEPENDENCIES, Dependencies} | Attrs], State) ->
   NewState = case jesse_lib:is_json_object(Value) of
                true  -> check_dependencies(Value, Dependencies, State);
@@ -177,6 +181,30 @@ check_value(Value, [{?MULTIPLEOF, Multiple} | Attrs], State) ->
                false -> State
              end,
   check_value(Value, Attrs, NewState);
+check_value(Value, [{?MAXPROPERTIES, MaxProperties} | Attrs], State) ->
+    NewState = case jesse_lib:is_json_object(Value) of
+                   true  -> check_max_properties(Value, MaxProperties, State);
+                   false -> State
+               end,
+    check_value(Value, Attrs, NewState);
+check_value(Value, [{?MINPROPERTIES, MinProperties} | Attrs], State) ->
+    NewState = case jesse_lib:is_json_object(Value) of
+                   true  -> check_min_properties(Value, MinProperties, State);
+                   false -> State
+               end,
+    check_value(Value, Attrs, NewState);
+check_value(Value, [{?ALLOF, Schemas} | Attrs], State) ->
+    NewState = check_all_of(Value, Schemas, State),
+    check_value(Value, Attrs, NewState);
+check_value(Value, [{?ANYOF, Schemas} | Attrs], State) ->
+    NewState = check_any_of(Value, Schemas, State),
+    check_value(Value, Attrs, NewState);
+check_value(Value, [{?ONEOF, Schemas} | Attrs], State) ->
+    NewState = check_one_of(Value, Schemas, State),
+    check_value(Value, Attrs, NewState);
+check_value(Value, [{?NOT, Schema} | Attrs], State) ->
+    NewState = check_not(Value, Schema, State),
+    check_value(Value, Attrs, NewState);
 check_value(_Value, [], State) ->
   State;
 check_value(Value, [_Attr | Attrs], State) ->
@@ -196,52 +224,36 @@ check_value(Property, Value, Attrs, State) ->
 %% @doc type
 %% @private
 check_type(Value, Type, State) ->
-  case is_type_valid(Value, Type, State) of
-    true  -> State;
-    false -> wrong_type(Value, State)
+  try
+    IsValid = case jesse_lib:is_array(Type) of
+                true  -> check_union_type(Value, Type, State);
+                false -> is_type_valid(Value, Type)
+              end,
+    case IsValid of
+      true  -> State;
+      false -> wrong_type(Value, State)
+    end
+  catch
+    %% The schema was invalid
+    error:function_clause ->
+      handle_schema_invalid(?wrong_type_specification, State)
   end.
 
-%% @private
-is_type_valid(Value, ?STRING, _State)  -> is_binary(Value);
-is_type_valid(Value, ?NUMBER, _State)  -> is_number(Value);
-is_type_valid(Value, ?INTEGER, _State) -> is_integer(Value);
-is_type_valid(Value, ?BOOLEAN, _State) -> is_boolean(Value);
-is_type_valid(Value, ?OBJECT, _State)  -> jesse_lib:is_json_object(Value);
-is_type_valid(Value, ?ARRAY, _State)   -> jesse_lib:is_array(Value);
-is_type_valid(Value, ?NULL, _State)    -> jesse_lib:is_null(Value);
-is_type_valid(_Value, ?ANY, _State)    -> true;
-is_type_valid(Value, UnionType, State) ->
-  case jesse_lib:is_array(UnionType) of
-    true  -> check_union_type(Value, UnionType, State);
-    false -> true
-  end.
 
 %% @private
-check_union_type(Value, UnionType, State) ->
-  lists:any( fun(Type) ->
-                 try
-                   case jesse_lib:is_json_object(Type) of
-                     true  ->
-                       %% case when there's a schema in the array,
-                       %% then we need to validate against that schema
-                       NewState = jesse_state:new(Type, []),
-                       _ = jesse_schema_validator:validate_with_state( Type
-                                                                     , Value
-                                                                     , NewState
-                                                                     ),
-                       true;
-                     false ->
-                       is_type_valid(Value, Type, State)
-                   end
-                 catch
-                   %% FIXME: don't like to have these error related
-                   %% macros here.
-                   throw:[{?data_invalid, _, _, _, _} | _] -> false;
-                   throw:[{?schema_invalid, _, _} | _]     -> false
-                 end
-             end
-           , UnionType
-           ).
+is_type_valid(Value, ?STRING)  -> is_binary(Value);
+is_type_valid(Value, ?NUMBER)  -> is_number(Value);
+is_type_valid(Value, ?INTEGER) -> is_integer(Value);
+is_type_valid(Value, ?BOOLEAN) -> is_boolean(Value);
+is_type_valid(Value, ?OBJECT)  -> jesse_lib:is_json_object(Value);
+is_type_valid(Value, ?ARRAY)   -> jesse_lib:is_array(Value);
+is_type_valid(Value, ?NULL)    -> jesse_lib:is_null(Value).
+
+%% @private
+check_union_type(Value, [_ | _] = UnionType, _State) ->
+  lists:any(fun(Type) -> is_type_valid(Value, Type) end, UnionType);
+check_union_type(_Value, _InvalidTypes, State) ->
+    handle_schema_invalid(?wrong_type_specification, State).
 
 %% @private
 wrong_type(Value, State) ->
@@ -254,15 +266,7 @@ check_properties(Value, Properties, State) ->
     = lists:foldl( fun({PropertyName, PropertySchema}, CurrentState) ->
                        case get_value(PropertyName, Value) of
                          ?not_found ->
-                           case get_value(?REQUIRED, PropertySchema) of
-                             true ->
-                               handle_data_invalid( {?missing_required_property
-                                                     , PropertyName}
-                                                   , Value
-                                                   , CurrentState);
-                             _    ->
-                               CurrentState
-                           end;
+                           CurrentState;
                          Property ->
                            NewState = set_current_schema( CurrentState
                                                         , PropertySchema
@@ -458,14 +462,6 @@ check_dependencies(Value, Dependencies, State) ->
              ).
 
 %% @private
-check_dependency_value(Value, _DependencyName, Dependency, State)
-  when is_binary(Dependency) ->
-  case get_value(Dependency, Value) of
-    ?not_found ->
-      handle_data_invalid({?missing_dependency, Dependency}, Value, State);
-    _          ->
-      State
-  end;
 check_dependency_value(Value, DependencyName, Dependency, State) ->
   case jesse_lib:is_json_object(Dependency) of
     true ->
@@ -481,14 +477,29 @@ check_dependency_value(Value, DependencyName, Dependency, State) ->
       handle_schema_invalid({?wrong_type_dependency, Dependency}, State)
   end.
 
+check_dependency(Value, Dependency, State)
+  when is_binary(Dependency) ->
+  case get_value(Dependency, Value) of
+    ?not_found ->
+      handle_data_invalid({?missing_dependency, Dependency}, Value, State);
+    _          ->
+      State
+  end;
+check_dependency(_Value, _Dependency, State) ->
+    handle_schema_invalid(?invalid_dependency, State).
+
 %% @private
 check_dependency_array(Value, DependencyName, Dependency, State) ->
   lists:foldl( fun(PropertyName, CurrentState) ->
-                   check_dependency_value( Value
-                                         , DependencyName
+                   case get_value(DependencyName, Value) of
+                       ?not_found ->
+                         CurrentState;
+                       _Exists ->
+                         check_dependency( Value
                                          , PropertyName
                                          , CurrentState
                                          )
+                   end
                end
              , State
              , Dependency
@@ -608,15 +619,127 @@ check_format(_Value, _Format, State) ->
 
 %% @doc multipleOf
 %% @private
-check_multiple_of(Value, 0, State) ->
-  handle_data_invalid(?not_divisible, Value, State);
-check_multiple_of(Value, MultipleOf, State) ->
+check_multiple_of(Value, MultipleOf, State)
+  when is_number(MultipleOf), MultipleOf > 0 ->
   Result = (Value / MultipleOf - trunc(Value / MultipleOf)) * MultipleOf,
   case Result of
     0.0 ->
       State;
     _   ->
-      handle_data_invalid(?not_divisible, Value, State)
+      handle_data_invalid(?not_multiple_of, Value, State)
+  end;
+check_multiple_of(_Value, _MultipleOf, State) ->
+  handle_schema_invalid(?wrong_multiple_of, State).
+
+%% @doc required
+%% @private
+check_required(Value, [_ | _] = Required, State) ->
+  IsValid = lists:all( fun(PropertyName) ->
+                           get_value(PropertyName, Value) =/= ?not_found
+                       end
+                     , Required
+                     ),
+    case IsValid of
+      true  -> State;
+      false -> handle_data_invalid(?missing_required_property, Value, State)
+    end;
+check_required(_Value, _InvalidRequired, State) ->
+    handle_schema_invalid(?wrong_required_array, State).
+
+%% @doc maxProperties
+%% @private
+check_max_properties(Value, MaxProperties, State)
+  when is_integer(MaxProperties), MaxProperties >= 0 ->
+    case length(unwrap(Value)) =< MaxProperties of
+      true  -> State;
+      false -> handle_data_invalid(?too_many_properties, Value, State)
+    end;
+check_max_properties(_Value, _MaxProperties, State) ->
+    handle_schema_invalid(?wrong_max_properties, State).
+
+%% @doc minProperties
+%% @private
+check_min_properties(Value, MinProperties, State)
+  when is_integer(MinProperties), MinProperties >= 0 ->
+    case length(unwrap(Value)) >= MinProperties of
+      true  -> State;
+      false -> handle_data_invalid(?too_few_properties, Value, State)
+    end;
+check_min_properties(_Value, _MaxProperties, State) ->
+  handle_schema_invalid(?wrong_min_properties, State).
+
+%% @doc allOf
+%% @private
+check_all_of(Value, [_ | _] = Schemas, State) ->
+  check_all_of_(Value, Schemas, State);
+check_all_of(_Value, _InvalidSchemas, State) ->
+  handle_schema_invalid(?wrong_all_of_schema_array, State).
+
+check_all_of_(_Value, [], State) ->
+    State;
+check_all_of_(Value, [Schema | Schemas], State) ->
+  case validate_schema(Value, Schema, State) of
+    {true, NewState} -> check_all_of_(Value, Schemas, NewState);
+    {false, _} -> handle_data_invalid(?all_schemas_not_valid, Value, State)
+  end.
+
+%% @doc anyOf
+%% @private
+check_any_of(Value, [_ | _] = Schemas, State) ->
+  check_any_of_(Value, Schemas, State);
+check_any_of(_Value, _InvalidSchemas, State) ->
+  handle_schema_invalid(?wrong_any_of_schema_array, State).
+
+check_any_of_(Value, [], State) ->
+  handle_data_invalid(?any_schemas_not_valid, Value, State);
+check_any_of_(Value, [Schema | Schemas], State) ->
+  case validate_schema(Value, Schema, State) of
+    {true, NewState} -> NewState;
+    {false, _} -> check_any_of_(Value, Schemas, State)
+  end.
+
+%% @doc oneOf
+%% @private
+check_one_of(Value, [_ | _] = Schemas, State) ->
+  check_one_of_(Value, Schemas, State, 0);
+check_one_of(_Value, _InvalidSchemas, State) ->
+  handle_schema_invalid(?wrong_one_of_schema_array, State).
+
+check_one_of_(_Value, [], State, 1) ->
+  State;
+check_one_of_(Value, [], State, 0) ->
+  handle_data_invalid(?not_one_schema_valid, Value, State);
+check_one_of_(Value, _Schemas, State, Valid) when Valid > 1 ->
+  handle_data_invalid(?not_one_schema_valid, Value, State);
+check_one_of_(Value, [Schema | Schemas], State, Valid) ->
+  case validate_schema(Value, Schema, State) of
+    {true, NewState} ->
+      check_one_of_(Value, Schemas, NewState, Valid + 1);
+    {false, _} ->
+      check_one_of_(Value, Schemas, State, Valid)
+  end.
+
+
+%% @doc not
+%% @private
+check_not(Value, Schema, State) ->
+  case validate_schema(Value, Schema, State) of
+    {true, _}  -> handle_data_invalid(?not_schema_valid, Value, State);
+    {false, _} -> State
+  end.
+
+validate_schema(Value, Schema, State0) ->
+  try
+    case jesse_lib:is_json_object(Schema) of
+      true ->
+        State1 = jesse_state:set_current_schema(Schema, State0),
+        State2 = jesse_schema_validator:validate_with_state(Value, Schema, State1),
+        {true, State2};
+      false ->
+        handle_schema_invalid(?invalid_schema, State0)
+    end
+  catch
+    throw:Errors -> {false, Errors}
   end.
 
 %%=============================================================================
