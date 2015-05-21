@@ -43,7 +43,7 @@
         , pattern/1
         , patternProperties/1
         , properties/1
-        %% , ref/1
+        , ref/1
         , required/1
         , type/1
         , uniqueItems/1
@@ -78,7 +78,7 @@ all() ->
   , pattern
   , patternProperties
   , properties
-  %% , ref
+  , ref
   , required
   , type
   , uniqueItems
@@ -177,11 +177,10 @@ properties(Config) ->
   Specs = ?config(Key, Config),
   ok    = run_tests(Specs).
 
-%% not implemented yet
-%% ref(Config) ->
-%%   Key   = "ref",
-%%   Specs = ?config(Key, Config),
-%%   ok    = run_tests(Specs).
+ref(Config) ->
+  Key   = "ref",
+  Specs = ?config(Key, Config),
+  ok    = run_tests(Specs).
 
 required(Config) ->
   Key   = "required",
