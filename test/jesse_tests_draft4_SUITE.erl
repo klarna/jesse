@@ -31,7 +31,7 @@
         , allOf/1
         , anyOf/1
         , default/1
-        %%, definitions/1
+        , definitions/1
         , dependencies/1
         , enum/1
         , items/1
@@ -49,16 +49,16 @@
         , pattern/1
         , patternProperties/1
         , properties/1
-        %% , ref/1
-        %% , refRemote/1
+        , ref/1
+        , refRemote/1
         , required/1
         , type/1
         , uniqueItems/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
--include("../src/jesse_schema_validator.hrl").
 
+-define(json_schema_draft4, <<"http://json-schema.org/draft-04/schema#">>).
 -define(TESTS_DIR, "JSON-Schema-Test-Suite/tests/draft4").
 
 %% JSON-Schema-Test-Suite attributes definitions
@@ -74,7 +74,7 @@ all() ->
   , allOf
   , anyOf
   , default
-  %%, definitions
+  , definitions
   , dependencies
   , enum
   , items
@@ -92,19 +92,19 @@ all() ->
   , pattern
   , patternProperties
   , properties
-  %% , ref
-  %% , refRemote
+  , ref
+  , refRemote
   , required
   , type
   , uniqueItems
   ].
 
-%%%
 init_per_suite(Config) ->
+  inets:start(),
   load_test_specs() ++ Config.
 
 end_per_suite(_Config) ->
-  ok.
+  inets:stop().
 
 %%% Testcases
 additionalItems(Config) ->
@@ -176,11 +176,15 @@ patternProperties(Config) ->
 properties(Config) ->
   do_test("properties", Config).
 
-%% ref(Config) ->
-%%   do_test("ref", Config).
-%%
-%% refRemote(Config) ->
-%%   do_test("refRemote", Config).
+ref(Config) ->
+  do_test("ref", Config).
+
+refRemote(Config) ->
+  ServerOpts = [{port, 1234}, {server_name, "localhost"}, {server_root, "."},
+                {document_root, "test/JSON-Schema-Test-Suite/remotes"},
+                {bind_address, "localhost"}],
+  inets:start(httpd, ServerOpts),
+  do_test("refRemote", Config).
 
 required(Config) ->
   do_test("required", Config).
@@ -193,7 +197,7 @@ uniqueItems(Config) ->
 
 %%% Internal functions
 do_test(Key, Config) ->
-    ok = run_tests(?config(Key, Config)).
+    run_tests(?config(Key, Config)).
 
 run_tests(Specs) ->
   lists:foreach( fun(Spec) ->
@@ -212,7 +216,8 @@ run_test_set(Schema, TestSet) ->
                      Description = get_path(?DESCRIPTION, Test),
                      TestData    = get_path(?DATA, Test),
                      ct:pal("* Test case: ~s~n", [Description]),
-                     Opts = [{default_schema_ver, ?json_schema_draft4}],
+                     Opts = [{default_schema_ver, ?json_schema_draft4},
+                             {schema_loader_fun, fun load_schema/1}],
                      try jesse:validate_with_schema(Schema, TestData, Opts) of
                          Result ->
                              ct:pal("Result: ~p~n", [Result]),
@@ -244,6 +249,13 @@ filename_to_key(Filename) ->
 
 get_path(Key, Schema) ->
   jesse_json_path:path(Key, Schema).
+
+load_schema(URI) ->
+  URIStr = unicode:characters_to_list(URI),
+  case httpc:request(get, {URIStr, []}, [], []) of
+    {ok, {{_Line, 200, _}, _Headers, Body}} -> jiffy:decode(Body);
+    {error, no_scheme} -> load_schema(URI)
+  end.
 
 %%% Local Variables:
 %%% erlang-indent-level: 2

@@ -283,7 +283,7 @@ check_union_type(Value, UnionType, State) ->
                      true  ->
                        %% case when there's a schema in the array,
                        %% then we need to validate against that schema
-                       NewState = jesse_state:new(Type, []),
+                       NewState = set_current_schema(State, Type),
                        _ = jesse_schema_validator:validate_with_state( Type
                                                                      , Value
                                                                      , NewState
@@ -865,33 +865,10 @@ check_extends_array(Value, Extends, State) ->
              ).
 
 %% @private
-check_ref(Value, <<"#", LocalPath/binary>> = RefSchemaURI, State) ->
-  Keys = binary:split(LocalPath, <<"/">>, ['global']),
-  OriginalSchema = jesse_state:get_original_schema(State),
-
-  case local_schema(OriginalSchema, Keys) of
-    ?not_found -> handle_schema_invalid({'schema_unsupported', RefSchemaURI}, State);
-    LocalSchema -> check_ref_schema(Value, LocalSchema, State)
-  end;
-check_ref(Value, RefSchemaURI, State) ->
-  case jesse_state:find_schema(State, RefSchemaURI) of
-    ?not_found -> handle_schema_invalid({'schema_unsupported', RefSchemaURI}, State);
-    RefSchema -> check_ref_schema(Value, RefSchema, State)
-  end.
-
-%% @private
-check_ref_schema(Value, RefSchema, State) ->
-  TmpState = check_value(Value, unwrap(RefSchema), set_current_schema(State, RefSchema)),
-  set_current_schema(TmpState, get_current_schema(State)).
-
-local_schema(Schema, []) -> Schema;
-local_schema(Schema, [<<>> | Keys]) -> local_schema(Schema, Keys);
-local_schema(Schema, [Key | Keys]) ->
-  SubSchema = get_value(Key, Schema),
-  case jesse_lib:is_json_object(SubSchema) of
-    true -> local_schema(SubSchema, Keys);
-    false -> ?not_found
-  end.
+check_ref(Value, Reference, State) ->
+  NewState = jesse_state:resolve_reference(State, Reference),
+  Schema = get_current_schema(NewState),
+  jesse_schema_validator:validate_with_state(Schema, Value, NewState).
 
 %%=============================================================================
 %% @doc Returns `true' if given values (instance) are equal, otherwise `false'

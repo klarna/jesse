@@ -205,6 +205,9 @@ check_value(Value, [{?ONEOF, Schemas} | Attrs], State) ->
 check_value(Value, [{?NOT, Schema} | Attrs], State) ->
     NewState = check_not(Value, Schema, State),
     check_value(Value, Attrs, NewState);
+check_value(Value, [{?_REF, Reference} | Attrs], State) ->
+    NewState = resolve_ref(Value, Reference, State),
+    check_value(Value, Attrs, NewState);
 check_value(_Value, [], State) ->
   State;
 check_value(Value, [_Attr | Attrs], State) ->
@@ -732,8 +735,8 @@ validate_schema(Value, Schema, State0) ->
   try
     case jesse_lib:is_json_object(Schema) of
       true ->
-        State1 = jesse_state:set_current_schema(Schema, State0),
-        State2 = jesse_schema_validator:validate_with_state(Value, Schema, State1),
+        State1 = jesse_state:set_current_schema(State0, Schema),
+        State2 = jesse_schema_validator:validate_with_state(Schema, Value, State1),
         {true, State2};
       false ->
         handle_schema_invalid(?invalid_schema, State0)
@@ -741,6 +744,14 @@ validate_schema(Value, Schema, State0) ->
   catch
     throw:Errors -> {false, Errors}
   end.
+
+%% @doc $ref
+%% @private
+resolve_ref(Value, Reference, State) ->
+  NewState = jesse_state:resolve_reference(State, Reference),
+  Schema = get_current_schema(NewState),
+  jesse_schema_validator:validate_with_state(Schema, Value, NewState).
+
 
 %%=============================================================================
 %% @doc Returns `true' if given values (instance) are equal, otherwise `false'

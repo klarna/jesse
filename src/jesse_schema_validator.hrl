@@ -46,7 +46,7 @@
 -define(DISALLOW,             <<"disallow">>).
 -define(EXTENDS,              <<"extends">>).
 -define(ID,                   <<"id">>).
--define(_REF,                 <<"$ref">>).                 % NOT IMPLEMENTED YET
+-define(_REF,                 <<"$ref">>).
 -define(ALLOF,                <<"allOf">>).
 -define(ANYOF,                <<"anyOf">>).
 -define(ONEOF,                <<"oneOf">>).
@@ -66,9 +66,9 @@
 -define(STRING,               <<"string">>).
 
 %% Supported $schema attributes
--define(default_schema_ver, <<"http://json-schema.org/draft-03/schema#">>).
 -define(json_schema_draft3, <<"http://json-schema.org/draft-03/schema#">>).
 -define(json_schema_draft4, <<"http://json-schema.org/draft-04/schema#">>).
+-define(default_schema_ver, ?json_schema_draft3).
 
 %%
 -define(data_invalid,                'data_invalid').

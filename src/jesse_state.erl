@@ -27,7 +27,7 @@
         , get_allowed_errors/1
         , get_current_path/1
         , get_current_schema/1
-        , get_original_schema/1
+        , get_root_schema/1
         , get_default_schema_ver/1
         , get_error_handler/1
         , get_error_list/1
@@ -35,8 +35,10 @@
         , remove_last_from_path/1
         , set_allowed_errors/2
         , set_current_schema/2
+        , set_root_schema/2
         , set_error_list/2
         , find_schema/2
+        , resolve_reference/2
         ]).
 
 -export_type([ state/0
@@ -49,7 +51,7 @@
 
 %% Internal datastructures
 -record( state
-       , { original_schema    :: jesse:json_term()
+       , { root_schema        :: jesse:json_term()
          , current_schema     :: jesse:json_term()
          , current_path       :: [binary()] %% current path in reversed order
          , allowed_errors     :: non_neg_integer() | 'infinity'
@@ -57,6 +59,7 @@
          , error_handler      :: fun((#state{}) -> list() | no_return())
          , default_schema_ver :: atom()
          , schema_loader_fun  :: fun((binary()) -> {ok, jesse:json_term()} | jesse:json_term() | ?not_found)
+         , id                 :: binary()
          }
        ).
 
@@ -84,10 +87,10 @@ get_current_path(#state{current_path = CurrentPath}) ->
 get_current_schema(#state{current_schema = CurrentSchema}) ->
   CurrentSchema.
 
-%% @doc Getter for `original_schema'.
--spec get_original_schema(State :: state()) -> jesse:json_term().
-get_original_schema(#state{original_schema = OriginalSchema}) ->
-  OriginalSchema.
+%% @doc Getter for `root_schema'.
+-spec get_root_schema(State :: state()) -> jesse:json_term().
+get_root_schema(#state{root_schema = RootSchema}) ->
+  RootSchema.
 
 %% @doc Getter for `default_schema_ver'.
 -spec get_default_schema_ver(State :: state()) -> binary().
@@ -129,7 +132,7 @@ new(JsonSchema, Options) ->
                                  ),
   #state{ current_schema     = JsonSchema
         , current_path       = []
-        , original_schema    = JsonSchema
+        , root_schema        = JsonSchema
         , allowed_errors     = AllowedErrors
         , error_list         = []
         , error_handler      = ErrorHandler
@@ -156,13 +159,26 @@ set_allowed_errors(#state{} = State, AllowedErrors) ->
 set_current_schema(State, NewSchema) ->
   State#state{current_schema = NewSchema}.
 
+set_root_schema(State, Schema) ->
+  NewState = State#state{root_schema = Schema, current_schema = Schema},
+  case jesse_json_path:value(?ID, Schema, undefined) of
+    undefined -> NewState;
+    Id        -> NewState#state{id = resolve_new_id(State#state.id, Id)}
+  end.
+
 %% @doc Setter for `error_list'.
 -spec set_error_list(State :: state(), ErrorList :: list()) -> state().
 set_error_list(State, ErrorList) ->
   State#state{error_list = ErrorList}.
 
+%% @doc Resolve a new id URI
+%% @private
+resolve_new_id(_OldId, NewId) ->
+  NewId.
+
 %% @doc Find a schema based on URI
--spec find_schema(State :: state(), SchemaURI :: binary()) -> jesse:json_term() | ?not_found.
+-spec find_schema(State :: state(), SchemaURI :: binary()) ->
+    jesse:json_term() | ?not_found.
 find_schema(#state{schema_loader_fun=LoaderFun}, SchemaURI) ->
   try LoaderFun(SchemaURI) of
       {ok, Schema} -> Schema;
@@ -174,6 +190,70 @@ find_schema(#state{schema_loader_fun=LoaderFun}, SchemaURI) ->
   catch
     _:_ -> ?not_found
   end.
+
+%% @doc Resolve a reference in the given state
+-spec resolve_reference(State :: state(), Reference :: binary()) -> state().
+resolve_reference(State, Reference) ->
+  case combine_id_and_ref(State#state.id, Reference) of
+    <<$#, Pointer/binary>> ->
+      Path = jesse_json_path:parse(Pointer),
+      case local_schema(State#state.root_schema, Path) of
+        ?not_found -> jesse_error:handle_schema_invalid(?schema_invalid, State);
+        Schema     -> set_current_schema(State, Schema)
+      end;
+    RemoteURI ->
+      %% Split the URI on the fragment if it exists
+      [BaseURI | MaybePointer] = binary:split(RemoteURI, <<$#>>),
+      case jesse_state:find_schema(State, BaseURI) of
+        ?not_found ->
+          ct:pal("ASDASDASDADA"),
+          jesse_error:handle_schema_invalid(?schema_invalid, State);
+        RemoteSchema ->
+          ct:pal("REMOTESCHEMA: ~p~n", [RemoteSchema]),
+          NewState = set_root_schema(State, RemoteSchema),
+          Path = case MaybePointer of
+                     []        -> [];
+                     [Pointer] -> jesse_json_path:parse(Pointer)
+                 end,
+          case local_schema(RemoteSchema, Path) of
+            ?not_found ->
+              jesse_error:handle_schema_invalid(?schema_invalid, State);
+            Schema ->
+              set_current_schema(NewState, Schema)
+          end
+      end
+  end.
+
+local_schema(?not_found, _Path) ->
+  ?not_found;
+local_schema(Schema, []) ->
+  case jesse_lib:is_json_object(Schema) of
+    true  -> Schema;
+    false -> ?not_found
+  end;
+local_schema(Schema, [<<>> | Keys]) -> local_schema(Schema, Keys);
+local_schema(Schema, [Key | Keys]) ->
+  case jesse_lib:is_json_object(Schema) of
+    true  ->
+      SubSchema = jesse_json_path:value(Key, Schema, ?not_found),
+      local_schema(SubSchema, Keys);
+    false ->
+      case jesse_lib:is_array(Schema) of
+        true ->
+          try binary_to_integer(Key) of
+            Index ->
+              SubSchema = lists:nth(Index + 1, Schema),
+              local_schema(SubSchema, Keys)
+          catch
+            _:_ -> ?not_found
+          end;
+        false ->
+          ?not_found
+      end
+  end.
+
+combine_id_and_ref(_Id, Reference) ->
+  Reference.
 
 %%% Local Variables:
 %%% erlang-indent-level: 2

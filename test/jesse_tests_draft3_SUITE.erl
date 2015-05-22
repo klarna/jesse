@@ -29,6 +29,7 @@
 -export([ additionalItems/1
         , additionalProperties/1
         , dependencies/1
+        , default/1
         , disallow/1
         , divisibleBy/1
         , enum/1
@@ -44,6 +45,7 @@
         , patternProperties/1
         , properties/1
         , ref/1
+        , refRemote/1
         , required/1
         , type/1
         , uniqueItems/1
@@ -52,6 +54,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -define(TESTS_DIR, "JSON-Schema-Test-Suite/tests/draft3").
+-define(json_schema_draft3, <<"http://json-schema.org/draft-03/schema#">>).
 
 %% JSON-Schema-Test-Suite attributes definitions
 -define(DATA,        <<"data">>).
@@ -63,6 +66,7 @@
 all() ->
   [ additionalItems
   , additionalProperties
+  , default
   , dependencies
   , disallow
   , divisibleBy
@@ -79,131 +83,103 @@ all() ->
   , patternProperties
   , properties
   , ref
+  , refRemote
   , required
   , type
   , uniqueItems
   ].
 
-%%%
 init_per_suite(Config) ->
+  inets:start(),
   load_test_specs() ++ Config.
 
 end_per_suite(_Config) ->
-  ok.
+  inets:stop().
 
 %%% Testcases
 additionalItems(Config) ->
-  Key   = "additionalItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("additionalItems", Config).
 
 additionalProperties(Config) ->
-  Key   = "additionalProperties",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("additionalProperties", Config).
+
+default(Config) ->
+  do_test("default", Config).
 
 dependencies(Config) ->
-  Key   = "dependencies",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("dependencies", Config).
 
 disallow(Config) ->
-  Key   = "disallow",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("disallow", Config).
 
 divisibleBy(Config) ->
-  Key   = "divisibleBy",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("divisibleBy", Config).
 
 enum(Config) ->
-  Key   = "enum",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("enum", Config).
 
 extends(Config) ->
-  Key   = "extends",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("extends", Config).
 
 items(Config) ->
-  Key   = "items",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("items", Config).
 
 maximum(Config) ->
-  Key   = "maximum",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("maximum", Config).
 
 maxItems(Config) ->
-  Key   = "maxItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("maxItems", Config).
 
 maxLength(Config) ->
-  Key   = "maxLength",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("maxLength", Config).
 
 minimum(Config) ->
-  Key   = "minimum",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("minimum", Config).
 
 minItems(Config) ->
-  Key   = "minItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("minItems", Config).
 
 minLength(Config) ->
-  Key   = "minLength",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("minLength", Config).
 
 pattern(Config) ->
-  Key   = "pattern",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("pattern", Config).
 
 patternProperties(Config) ->
-  Key   = "patternProperties",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("patternProperties", Config).
 
 properties(Config) ->
-  Key   = "properties",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("properties", Config).
 
 ref(Config) ->
-  Key   = "ref",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("ref", Config).
+
+refRemote(Config) ->
+  ServerOpts = [{port, 1234}, {server_name, "localhost"}, {server_root, "."},
+                {document_root, "JSON-Schema-Test-Suite/remotes"},
+                {bind_address, "localhost"}],
+  inets:start(httpd, ServerOpts),
+  do_test("refRemote", Config).
 
 required(Config) ->
-  Key   = "required",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("required", Config).
 
 type(Config) ->
-  Key   = "type",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("type", Config).
 
 uniqueItems(Config) ->
-  Key   = "uniqueItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("uniqueItems", Config).
 
 %%% Internal functions
+do_test(Key, Config) ->
+  run_tests(?config(Key, Config)).
+
 run_tests(Specs) ->
   lists:foreach( fun(Spec) ->
                      Description = get_path(?DESCRIPTION, Spec),
                      Schema      = get_path(?SCHEMA, Spec),
                      TestSet     = get_path(?TESTS, Spec),
-                     io:format("** Test set: ~s~n", [Description]),
+                     ct:pal("** Test set: ~s~n", [Description]),
                      run_test_set(Schema, TestSet)
                  end
                , Specs
@@ -213,12 +189,18 @@ run_test_set(Schema, TestSet) ->
   lists:foreach( fun(Test) ->
                      Description = get_path(?DESCRIPTION, Test),
                      TestData    = get_path(?DATA, Test),
-                     io:format("* Test case: ~s~n", [Description]),
-                     Result = jesse:validate_with_schema(Schema, TestData),
-                     io:format("Result: ~p~n", [Result]),
-                     case get_path(?VALID, Test) of
-                       true  -> {ok, TestData} = Result;
-                       false -> {error, _} = Result
+                     ct:pal("* Test case: ~s~n", [Description]),
+                     Opts = [{schema_loader_fun, fun load_schema/1}],
+                     try jesse:validate_with_schema(Schema, TestData, Opts) of
+                         Result ->
+                             ct:pal("Result: ~p~n", [Result]),
+                             case get_path(?VALID, Test) of
+                                 true  -> {ok, TestData} = Result;
+                                 false -> {error, _} = Result
+                             end
+                     catch C:E ->
+                               ct:pal("Error: ~p:~p~nStacktrace: ~p~n",
+                                      [C, E, erlang:get_stacktrace()])
                      end
                  end
                , TestSet
@@ -240,6 +222,13 @@ filename_to_key(Filename) ->
 
 get_path(Key, Schema) ->
   jesse_json_path:path(Key, Schema).
+
+load_schema(URI) ->
+  URIStr = unicode:characters_to_list(URI),
+  case httpc:request(get, {URIStr, []}, [], []) of
+    {ok, {{_Line, 200, _}, _Headers, Body}} -> jiffy:decode(Body);
+    {error, no_scheme} -> load_schema(URI)
+  end.
 
 %%% Local Variables:
 %%% erlang-indent-level: 2
