@@ -180,9 +180,10 @@ ref(Config) ->
   do_test("ref", Config).
 
 refRemote(Config) ->
+  TestDir = os:getenv("TEST_DIR"),
+  DocumentRoot = filename:join(TestDir, "JSON-Schema-Test-Suite/remotes"),
   ServerOpts = [{port, 1234}, {server_name, "localhost"}, {server_root, "."},
-                {document_root, "test/JSON-Schema-Test-Suite/remotes"},
-                {bind_address, "localhost"}],
+                {document_root, DocumentRoot}],
   inets:start(httpd, ServerOpts),
   do_test("refRemote", Config).
 
@@ -251,11 +252,9 @@ get_path(Key, Schema) ->
   jesse_json_path:path(Key, Schema).
 
 load_schema(URI) ->
-  URIStr = unicode:characters_to_list(URI),
-  case httpc:request(get, {URIStr, []}, [], []) of
-    {ok, {{_Line, 200, _}, _Headers, Body}} -> jiffy:decode(Body);
-    {error, no_scheme} -> load_schema(URI)
-  end.
+  {ok, Response} = httpc:request(get, {URI, []}, [], [{body_format, binary}]),
+  {{_Line, 200, _}, _Headers, Body} = Response,
+  jiffy:decode(Body).
 
 %%% Local Variables:
 %%% erlang-indent-level: 2

@@ -27,9 +27,15 @@
 -export_type([proplist/0, kvc_key/0, kvc_obj/0]).
 
 %% @doc Parse a JSON Pointer
--spec parse(JSONPointer :: binary()) -> [binary()].
+%% TODO: Parse according to specification
+-spec parse(JSONPointer :: string() | binary()) -> [binary()].
 parse(JSONPointer) ->
-    binary:split(JSONPointer, <<"/">>, ['global']).
+    lists:map(
+      fun (Segment) when is_list(Segment) -> unicode:characters_to_binary(Segment);
+          (Segment) when is_binary(Segment) -> Segment
+      end,
+      re:split(JSONPointer, <<"/">>, [{return, binary}, unicode])
+     ).
 
 %% @doc Return the result of the query Path on P.
 -spec path(kvc_key() | [kvc_key()], kvc_obj()) -> term() | [].
