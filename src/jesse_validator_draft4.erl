@@ -1127,7 +1127,7 @@ validate_schema(Value, Schema, State0) ->
         State2 = jesse_schema_validator:validate_with_state(Schema, Value, State1),
         {true, State2};
       false ->
-        handle_schema_invalid(?invalid_schema, State0)
+        handle_schema_invalid(?schema_invalid, State0)
     end
   catch
     throw:Errors -> {false, Errors}

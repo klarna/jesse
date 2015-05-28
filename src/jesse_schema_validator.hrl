@@ -109,7 +109,6 @@
 -define(wrong_one_of_schema_array,   'wrong_one_of_schema_array').
 -define(not_schema_valid,            'not_schema_valid').
 -define(wrong_not_schema,            'wrong_not_schema').
--define(invalid_schema,              'wrong_schema').
 
 %%
 -define(not_found, not_found).

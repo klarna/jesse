@@ -27,7 +27,8 @@
 -export_type([proplist/0, kvc_key/0, kvc_obj/0]).
 
 %% @doc Parse a JSON Pointer
-%% TODO: Parse according to specification
+%% TODO: Parse according to specification. This does not accurately parse
+%%       tilde escaped JSON Pointers.
 -spec parse(JSONPointer :: string() | binary()) -> [binary()].
 parse(JSONPointer) ->
     lists:map(
