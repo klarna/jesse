@@ -1,3 +1,5 @@
+**This repository is no longer actively maintained, please see https://github.com/for-GET/jesse**
+
 =====
 jesse [![Build Status](https://secure.travis-ci.org/klarna/jesse.png)](http://travis-ci.org/klarna/jesse)
 =====
