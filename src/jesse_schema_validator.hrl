@@ -46,7 +46,14 @@
 -define(DISALLOW,             <<"disallow">>).
 -define(EXTENDS,              <<"extends">>).
 -define(ID,                   <<"id">>).
--define(_REF,                 <<"$ref">>).                 % NOT IMPLEMENTED YET
+-define(_REF,                 <<"$ref">>).
+-define(ALLOF,                <<"allOf">>).
+-define(ANYOF,                <<"anyOf">>).
+-define(ONEOF,                <<"oneOf">>).
+-define(NOT,                  <<"not">>).
+-define(MULTIPLEOF,           <<"multipleOf">>).
+-define(MAXPROPERTIES,        <<"maxProperties">>).
+-define(MINPROPERTIES,        <<"minProperties">>).
 
 %% Constant definitions for Json types
 -define(ANY,                  <<"any">>).
@@ -59,8 +66,9 @@
 -define(STRING,               <<"string">>).
 
 %% Supported $schema attributes
--define(default_schema_ver, <<"http://json-schema.org/draft-03/schema#">>).
 -define(json_schema_draft3, <<"http://json-schema.org/draft-03/schema#">>).
+-define(json_schema_draft4, <<"http://json-schema.org/draft-04/schema#">>).
+-define(default_schema_ver, ?json_schema_draft3).
 
 %%
 -define(data_invalid,                'data_invalid').
@@ -80,10 +88,27 @@
 -define(wrong_type,                  'wrong_type').
 -define(wrong_type_items,            'wrong_type_items').
 -define(wrong_type_dependency,       'wrong_type_dependency').
+-define(invalid_dependency,          'invalid_dependency').
 -define(wrong_size,                  'wrong_size').
 -define(wrong_length,                'wrong_length').
 -define(wrong_format,                'wrong_format').
 -define(schema_unsupported,          'schema_unsupported').
+-define(wrong_required_array,        'wrong_required_array').
+-define(not_multiple_of,             'not_multiple_of').
+-define(wrong_multiple_of,           'wrong_multiple_of').
+-define(too_many_properties,         'too_many_properties').
+-define(wrong_max_properties,        'wrong_max_properties').
+-define(too_few_properties,          'too_few_properties').
+-define(wrong_min_properties,        'wrong_min_properties').
+-define(wrong_type_specification,    'wrong_type_specification').
+-define(all_schemas_not_valid,       'all_schemas_not_valid').
+-define(wrong_all_of_schema_array,   'wrong_all_of_schema_array').
+-define(any_schemas_not_valid,       'any_schemas_not_valid').
+-define(wrong_any_of_schema_array,   'wrong_any_of_schema_array').
+-define(not_one_schema_valid,        'not_one_schema_valid').
+-define(wrong_one_of_schema_array,   'wrong_one_of_schema_array').
+-define(not_schema_valid,            'not_schema_valid').
+-define(wrong_not_schema,            'wrong_not_schema').
 
 %%
 -define(not_found, not_found).

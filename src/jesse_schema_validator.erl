@@ -83,6 +83,11 @@ select_and_run_validator(?json_schema_draft3, JsonSchema, Value, State) ->
                                     , jesse_json_path:unwrap_value(JsonSchema)
                                     , State
                                     );
+select_and_run_validator(?json_schema_draft4, JsonSchema, Value, State) ->
+    jesse_validator_draft4:check_value( Value
+                                      , jesse_json_path:unwrap_value(JsonSchema)
+                                      , State
+                                      );
 select_and_run_validator(SchemaURI, _JsonSchema, _Value, State) ->
   jesse_error:handle_schema_invalid({?schema_unsupported, SchemaURI}, State).
 

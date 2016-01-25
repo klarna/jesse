@@ -14,12 +14,12 @@
 %% limitations under the License.
 %%
 %%
-%% @doc jesse test suite which covers Draft 03. It uses JSON-Schema-Test-Suite
+%% @doc jesse test suite which covers Draft 04. It uses JSON-Schema-Test-Suite
 %% (https://github.com/json-schema/JSON-Schema-Test-Suite) as the test data.
 %% @end
 %%%=============================================================================
 
--module(jesse_tests_draft3_SUITE).
+-module(jesse_tests_draft4_SUITE).
 
 -export([ all/0
         , init_per_suite/1
@@ -28,19 +28,24 @@
 
 -export([ additionalItems/1
         , additionalProperties/1
-        , dependencies/1
+        , allOf/1
+        , anyOf/1
         , default/1
-        , disallow/1
-        , divisibleBy/1
+        , definitions/1
+        , dependencies/1
         , enum/1
-        , extends/1
         , items/1
         , maximum/1
         , maxItems/1
         , maxLength/1
+        , maxProperties/1
         , minimum/1
         , minItems/1
         , minLength/1
+        , minProperties/1
+        , multipleOf/1
+        , 'not'/1
+        , oneOf/1
         , pattern/1
         , patternProperties/1
         , properties/1
@@ -53,8 +58,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--define(TESTS_DIR, "JSON-Schema-Test-Suite/tests/draft3").
--define(json_schema_draft3, <<"http://json-schema.org/draft-03/schema#">>).
+-define(json_schema_draft4, <<"http://json-schema.org/draft-04/schema#">>).
+-define(TESTS_DIR, "JSON-Schema-Test-Suite/tests/draft4").
 
 %% JSON-Schema-Test-Suite attributes definitions
 -define(DATA,        <<"data">>).
@@ -66,19 +71,24 @@
 all() ->
   [ additionalItems
   , additionalProperties
+  , allOf
+  , anyOf
   , default
+  , definitions
   , dependencies
-  , disallow
-  , divisibleBy
   , enum
-  , extends
   , items
   , maximum
   , maxItems
   , maxLength
+  , maxProperties
   , minimum
   , minItems
   , minLength
+  , minProperties
+  , multipleOf
+  , 'not'
+  , oneOf
   , pattern
   , patternProperties
   , properties
@@ -103,23 +113,23 @@ additionalItems(Config) ->
 additionalProperties(Config) ->
   do_test("additionalProperties", Config).
 
+allOf(Config) ->
+  do_test("allOf", Config).
+
+anyOf(Config) ->
+  do_test("anyOf", Config).
+
 default(Config) ->
   do_test("default", Config).
+
+definitions(Config) ->
+  do_test("definitions", Config).
 
 dependencies(Config) ->
   do_test("dependencies", Config).
 
-disallow(Config) ->
-  do_test("disallow", Config).
-
-divisibleBy(Config) ->
-  do_test("divisibleBy", Config).
-
 enum(Config) ->
   do_test("enum", Config).
-
-extends(Config) ->
-  do_test("extends", Config).
 
 items(Config) ->
   do_test("items", Config).
@@ -133,6 +143,9 @@ maxItems(Config) ->
 maxLength(Config) ->
   do_test("maxLength", Config).
 
+maxProperties(Config) ->
+  do_test("maxProperties", Config).
+
 minimum(Config) ->
   do_test("minimum", Config).
 
@@ -141,6 +154,18 @@ minItems(Config) ->
 
 minLength(Config) ->
   do_test("minLength", Config).
+
+minProperties(Config) ->
+  do_test("minProperties", Config).
+
+multipleOf(Config) ->
+  do_test("multipleOf", Config).
+
+'not'(Config) ->
+  do_test("not", Config).
+
+oneOf(Config) ->
+  do_test("oneOf", Config).
 
 pattern(Config) ->
   do_test("pattern", Config).
@@ -173,14 +198,15 @@ uniqueItems(Config) ->
 
 %%% Internal functions
 do_test(Key, Config) ->
-  run_tests(?config(Key, Config)).
+    run_tests(?config(Key, Config)).
 
 run_tests(Specs) ->
   lists:foreach( fun(Spec) ->
                      Description = get_path(?DESCRIPTION, Spec),
                      Schema      = get_path(?SCHEMA, Spec),
                      TestSet     = get_path(?TESTS, Spec),
-                     ct:pal("** Test set: ~s~n", [Description]),
+                     ct:pal("** Test set: ~s~n** Schema: ~p~n",
+                            [Description, Schema]),
                      run_test_set(Schema, TestSet)
                  end
                , Specs
@@ -191,7 +217,8 @@ run_test_set(Schema, TestSet) ->
                      Description = get_path(?DESCRIPTION, Test),
                      TestData    = get_path(?DATA, Test),
                      ct:pal("* Test case: ~s~n", [Description]),
-                     Opts = [{schema_loader_fun, fun load_schema/1}],
+                     Opts = [{default_schema_ver, ?json_schema_draft4},
+                             {schema_loader_fun, fun load_schema/1}],
                      try jesse:validate_with_schema(Schema, TestData, Opts) of
                          Result ->
                              ct:pal("Result: ~p~n", [Result]),

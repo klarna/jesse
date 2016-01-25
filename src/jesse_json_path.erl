@@ -4,7 +4,7 @@
 %% @doc Implementation of Key Value Coding style "queries" for commonly
 %% used Erlang data structures.
 -module(jesse_json_path).
--export([path/2, path/3, value/3, to_proplist/1, unwrap_value/1]).
+-export([parse/1, path/2, path/3, value/3, to_proplist/1, unwrap_value/1]).
 
 -ifdef(namespaced_dicts).
 -type kvc_dict() :: dict:dict().
@@ -25,6 +25,18 @@
                            elem_type()}.
 
 -export_type([proplist/0, kvc_key/0, kvc_obj/0]).
+
+%% @doc Parse a JSON Pointer
+%% TODO: Parse according to specification. This does not accurately parse
+%%       tilde escaped JSON Pointers.
+-spec parse(JSONPointer :: string() | binary()) -> [binary()].
+parse(JSONPointer) ->
+    lists:map(
+      fun (Segment) when is_list(Segment) -> unicode:characters_to_binary(Segment);
+          (Segment) when is_binary(Segment) -> Segment
+      end,
+      re:split(JSONPointer, <<"/">>, [{return, binary}, unicode])
+     ).
 
 %% @doc Return the result of the query Path on P.
 -spec path(kvc_key() | [kvc_key()], kvc_obj()) -> term() | [].
@@ -186,6 +198,8 @@ proplist_type({P=[{K, _} | _]}) ->
 proplist_type({}) ->
     {[], undefined};
 proplist_type([{}]) ->
+    {[], undefined};
+proplist_type({[]}) ->
     {[], undefined};
 proplist_type(L) when is_list(L) ->
     {L, list};

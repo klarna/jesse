@@ -35,27 +35,33 @@
         , set_allowed_errors/2
         , set_current_schema/2
         , set_error_list/2
+        , find_schema/2
+        , resolve_reference/2
         ]).
 
 -export_type([ state/0
              ]).
 
+%% Includes
+-include("jesse_schema_validator.hrl").
+
+-define(schema_loader_fun, fun jesse_database:read/1).
+
 %% Internal datastructures
 -record( state
-       , { original_schema    :: jesse:json_term()
+       , { root_schema        :: jesse:json_term()
          , current_schema     :: jesse:json_term()
          , current_path       :: [binary()] %% current path in reversed order
          , allowed_errors     :: non_neg_integer() | 'infinity'
          , error_list         :: list()
          , error_handler      :: fun((#state{}) -> list() | no_return())
          , default_schema_ver :: atom()
+         , schema_loader_fun  :: fun((binary()) -> {ok, jesse:json_term()} | jesse:json_term() | ?not_found)
+         , id                 :: binary()
          }
        ).
 
 -opaque state() :: #state{}.
-
-%% Includes
--include("jesse_schema_validator.hrl").
 
 %%% API
 %% @doc Adds `Property' to the `current_path' in `State'.
@@ -113,14 +119,19 @@ new(JsonSchema, Options) ->
                                         , Options
                                         , ?default_schema_ver
                                         ),
-  #state{ current_schema     = JsonSchema
-        , current_path       = []
-        , original_schema    = JsonSchema
-        , allowed_errors     = AllowedErrors
-        , error_list         = []
-        , error_handler      = ErrorHandler
-        , default_schema_ver = DefaultSchemaVer
-        }.
+  LoaderFun = proplists:get_value( schema_loader_fun
+                                 , Options
+                                 , ?schema_loader_fun
+                                 ),
+  NewState = #state{ root_schema        = JsonSchema
+                   , current_path       = []
+                   , allowed_errors     = AllowedErrors
+                   , error_list         = []
+                   , error_handler      = ErrorHandler
+                   , default_schema_ver = DefaultSchemaVer
+                   , schema_loader_fun  = LoaderFun
+                   },
+  set_current_schema(NewState, JsonSchema).
 
 %% @doc Removes the last element from `current_path' in `State'.
 -spec remove_last_from_path(State :: state()) -> state().
@@ -138,13 +149,119 @@ set_allowed_errors(#state{} = State, AllowedErrors) ->
 -spec set_current_schema( State     :: state()
                         , NewSchema :: jesse:json_term()
                         ) -> state().
-set_current_schema(State, NewSchema) ->
-  State#state{current_schema = NewSchema}.
+set_current_schema(#state{id = Id} = State, NewSchema) ->
+  NewId = combine_id(Id, jesse_json_path:value(?ID, NewSchema, undefined)),
+  State#state{current_schema = NewSchema, id = NewId}.
 
 %% @doc Setter for `error_list'.
 -spec set_error_list(State :: state(), ErrorList :: list()) -> state().
 set_error_list(State, ErrorList) ->
   State#state{error_list = ErrorList}.
+
+%% @doc Resolve a reference
+-spec resolve_reference(State :: state(), Reference :: binary()) -> state().
+resolve_reference(State, Reference) ->
+  case combine_id(State#state.id, Reference) of
+    %% Local references
+    [$# | Pointer] ->
+      Path = jesse_json_path:parse(Pointer),
+      case local_schema(State#state.root_schema, Path) of
+        ?not_found -> jesse_error:handle_schema_invalid(?schema_invalid, State);
+        Schema     -> set_current_schema(State, Schema)
+      end;
+    %% Remote references
+    RemoteURI ->
+      %% Split the URI on the fragment if it exists
+      [BaseURI | MaybePointer] = re:split(RemoteURI, <<$#>>, [{return, list}]),
+      case jesse_state:find_schema(State, BaseURI) of
+        ?not_found ->
+          jesse_error:handle_schema_invalid(?schema_invalid, State);
+        RemoteSchema ->
+          %% Set the new root schema
+          NewState = State#state{root_schema = RemoteSchema, id = BaseURI},
+          %% Retrive the part we want
+          Path = case MaybePointer of
+                   []        -> [];
+                   [Pointer] -> jesse_json_path:parse(Pointer)
+                 end,
+          case local_schema(RemoteSchema, Path) of
+            ?not_found ->
+              jesse_error:handle_schema_invalid(?schema_invalid, State);
+            Schema ->
+              set_current_schema(NewState, Schema)
+          end
+      end
+  end.
+
+%% @doc Retrive a specific part of a schema
+%% @private
+local_schema(?not_found, _Path) ->
+  ?not_found;
+local_schema(Schema, []) ->
+  case jesse_lib:is_json_object(Schema) of
+    true  -> Schema;
+    false -> ?not_found
+  end;
+local_schema(Schema, [<<>> | Keys]) -> local_schema(Schema, Keys);
+local_schema(Schema, [Key | Keys]) ->
+  case jesse_lib:is_json_object(Schema) of
+    true  ->
+      SubSchema = jesse_json_path:value(Key, Schema, ?not_found),
+      local_schema(SubSchema, Keys);
+    false ->
+      case jesse_lib:is_array(Schema) of
+        true ->
+          try binary_to_integer(Key) of
+            Index ->
+              SubSchema = lists:nth(Index + 1, Schema),
+              local_schema(SubSchema, Keys)
+          catch
+            _:_ -> ?not_found
+          end;
+        false ->
+          ?not_found
+      end
+  end.
+
+%% @doc Resolve a new id
+%% @private
+-spec combine_id(undefined | http_uri:uri(), undefined | binary()) -> http_uri:uri().
+combine_id(Id, undefined) ->
+  Id;
+combine_id(Id, Ref) ->
+  RefStr = unicode:characters_to_list(Ref),
+  case http_uri:parse(RefStr) of
+    %% Absolute
+    {ok, _} -> RefStr;
+    %% Relative
+    _Error  -> combine_relative_id(Id, RefStr)
+  end.
+
+combine_relative_id(undefined, Id) ->
+  Id;
+combine_relative_id(Id, [$# | Fragment]) ->
+  [WithoutFragment | _] = re:split(Id, <<$#>>, [{return, list}]),
+  WithoutFragment ++ [$# | Fragment];
+combine_relative_id(Id, NewFile) ->
+  BaseURI = filename:dirname(Id),
+  FileName = unicode:characters_to_list(NewFile),
+  BaseURI ++ [$/ | FileName].
+
+%% @doc Find a schema based on URI
+-spec find_schema(State :: state(), SchemaURI :: binary()) ->
+    jesse:json_term() | ?not_found.
+find_schema(#state{schema_loader_fun=LoaderFun}, SchemaURI) ->
+  try LoaderFun(SchemaURI) of
+      {ok, Schema} ->
+        Schema;
+      Schema ->
+        case jesse_lib:is_json_object(Schema) of
+          true  -> Schema;
+          false -> ?not_found
+        end
+  catch
+    _:_ -> ?not_found
+  end.
 
 %%% Local Variables:
 %%% erlang-indent-level: 2
