@@ -14,12 +14,12 @@
 %% limitations under the License.
 %%
 %%
-%% @doc jesse test suite which covers Draft 03. It uses JSON-Schema-Test-Suite
+%% @doc jesse test suite which covers Draft 04. It uses JSON-Schema-Test-Suite
 %% (https://github.com/json-schema/JSON-Schema-Test-Suite) as the test data.
 %% @end
 %%%=============================================================================
 
--module(jesse_tests_draft3_SUITE).
+-module(jesse_tests_draft4_SUITE).
 
 -export([ all/0
         , init_per_suite/1
@@ -28,30 +28,38 @@
 
 -export([ additionalItems/1
         , additionalProperties/1
+        , allOf/1
+        , anyOf/1
+        , default/1
+        %%, definitions/1
         , dependencies/1
-        , disallow/1
-        , divisibleBy/1
         , enum/1
-        , extends/1
         , items/1
         , maximum/1
         , maxItems/1
         , maxLength/1
+        , maxProperties/1
         , minimum/1
         , minItems/1
         , minLength/1
+        , minProperties/1
+        , multipleOf/1
+        , 'not'/1
+        , oneOf/1
         , pattern/1
         , patternProperties/1
         , properties/1
         %% , ref/1
+        %% , refRemote/1
         , required/1
         , type/1
         , uniqueItems/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include("../src/jesse_schema_validator.hrl").
 
--define(TESTS_DIR, "JSON-Schema-Test-Suite/tests/draft3").
+-define(TESTS_DIR, "JSON-Schema-Test-Suite/tests/draft4").
 
 %% JSON-Schema-Test-Suite attributes definitions
 -define(DATA,        <<"data">>).
@@ -63,22 +71,29 @@
 all() ->
   [ additionalItems
   , additionalProperties
+  , allOf
+  , anyOf
+  , default
+  %%, definitions
   , dependencies
-  , disallow
-  , divisibleBy
   , enum
-  , extends
   , items
   , maximum
   , maxItems
   , maxLength
+  , maxProperties
   , minimum
   , minItems
   , minLength
+  , minProperties
+  , multipleOf
+  , 'not'
+  , oneOf
   , pattern
   , patternProperties
   , properties
   %% , ref
+  %% , refRemote
   , required
   , type
   , uniqueItems
@@ -93,118 +108,100 @@ end_per_suite(_Config) ->
 
 %%% Testcases
 additionalItems(Config) ->
-  Key   = "additionalItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("additionalItems", Config).
 
 additionalProperties(Config) ->
-  Key   = "additionalProperties",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("additionalProperties", Config).
+
+allOf(Config) ->
+  do_test("allOf", Config).
+
+anyOf(Config) ->
+  do_test("anyOf", Config).
+
+default(Config) ->
+  do_test("default", Config).
+
+definitions(Config) ->
+  do_test("definitions", Config).
 
 dependencies(Config) ->
-  Key   = "dependencies",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
-
-disallow(Config) ->
-  Key   = "disallow",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
-
-divisibleBy(Config) ->
-  Key   = "divisibleBy",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("dependencies", Config).
 
 enum(Config) ->
-  Key   = "enum",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
-
-extends(Config) ->
-  Key   = "extends",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("enum", Config).
 
 items(Config) ->
-  Key   = "items",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("items", Config).
 
 maximum(Config) ->
-  Key   = "maximum",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("maximum", Config).
 
 maxItems(Config) ->
-  Key   = "maxItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("maxItems", Config).
 
 maxLength(Config) ->
-  Key   = "maxLength",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("maxLength", Config).
+
+maxProperties(Config) ->
+  do_test("maxProperties", Config).
 
 minimum(Config) ->
-  Key   = "minimum",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("minimum", Config).
 
 minItems(Config) ->
-  Key   = "minItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("minItems", Config).
 
 minLength(Config) ->
-  Key   = "minLength",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("minLength", Config).
+
+minProperties(Config) ->
+  do_test("minProperties", Config).
+
+multipleOf(Config) ->
+  do_test("multipleOf", Config).
+
+'not'(Config) ->
+  do_test("not", Config).
+
+oneOf(Config) ->
+  do_test("oneOf", Config).
 
 pattern(Config) ->
-  Key   = "pattern",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("pattern", Config).
 
 patternProperties(Config) ->
-  Key   = "patternProperties",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("patternProperties", Config).
 
 properties(Config) ->
-  Key   = "properties",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("properties", Config).
 
-%% not implemented yet
 %% ref(Config) ->
-%%   Key   = "ref",
-%%   Specs = ?config(Key, Config),
-%%   ok    = run_tests(Specs).
+%%   do_test("ref", Config).
+%%
+%% refRemote(Config) ->
+%%   do_test("refRemote", Config).
 
 required(Config) ->
-  Key   = "required",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("required", Config).
 
 type(Config) ->
-  Key   = "type",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("type", Config).
 
 uniqueItems(Config) ->
-  Key   = "uniqueItems",
-  Specs = ?config(Key, Config),
-  ok    = run_tests(Specs).
+  do_test("uniqueItems", Config).
 
 %%% Internal functions
+do_test(Key, Config) ->
+    ok = run_tests(?config(Key, Config)).
+
 run_tests(Specs) ->
   lists:foreach( fun(Spec) ->
                      Description = get_path(?DESCRIPTION, Spec),
                      Schema      = get_path(?SCHEMA, Spec),
                      TestSet     = get_path(?TESTS, Spec),
-                     io:format("** Test set: ~s~n", [Description]),
+                     ct:pal("** Test set: ~s~n** Schema: ~p~n",
+                            [Description, Schema]),
                      run_test_set(Schema, TestSet)
                  end
                , Specs
@@ -214,12 +211,18 @@ run_test_set(Schema, TestSet) ->
   lists:foreach( fun(Test) ->
                      Description = get_path(?DESCRIPTION, Test),
                      TestData    = get_path(?DATA, Test),
-                     io:format("* Test case: ~s~n", [Description]),
-                     Result = jesse:validate_with_schema(Schema, TestData),
-                     io:format("Result: ~p~n", [Result]),
-                     case get_path(?VALID, Test) of
-                       true  -> {ok, TestData} = Result;
-                       false -> {error, _} = Result
+                     ct:pal("* Test case: ~s~n", [Description]),
+                     Opts = [{default_schema_ver, ?json_schema_draft4}],
+                     try jesse:validate_with_schema(Schema, TestData, Opts) of
+                         Result ->
+                             ct:pal("Result: ~p~n", [Result]),
+                             case get_path(?VALID, Test) of
+                                 true  -> {ok, TestData} = Result;
+                                 false -> {error, _} = Result
+                             end
+                     catch C:E ->
+                               ct:pal("Error: ~p:~p~nStacktrace: ~p~n",
+                                      [C, E, erlang:get_stacktrace()])
                      end
                  end
                , TestSet

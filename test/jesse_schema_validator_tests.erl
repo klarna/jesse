@@ -179,14 +179,14 @@ empty_list_as_valid_value_for_string_test() ->
 
 schema_unsupported_test() ->
   SupportedSchema = {[{<<"$schema">>, <<"http://json-schema.org/draft-03/schema#">>}]},
-  UnsupportedSchema = {[{<<"$schema">>, <<"http://json-schema.org/draft-04/schema#">>}]},
+  UnsupportedSchema = {[{<<"$schema">>, <<"http://json-schema.org/draft-05/schema#">>}]},
 
   Json = {[{<<"Doesn't matter">>}]},
   ?assertEqual( {ok, Json}
               , jesse_schema_validator:validate(SupportedSchema, Json, [])
               ),
   ?assertThrow([{schema_invalid, UnsupportedSchema,
-                 {schema_unsupported, <<"http://json-schema.org/draft-04/schema#">>}}]
+                 {schema_unsupported, <<"http://json-schema.org/draft-05/schema#">>}}]
               , jesse_schema_validator:validate(UnsupportedSchema, Json, [])
               ).
 
