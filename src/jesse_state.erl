@@ -27,6 +27,7 @@
         , get_allowed_errors/1
         , get_current_path/1
         , get_current_schema/1
+        , get_original_schema/1
         , get_default_schema_ver/1
         , get_error_handler/1
         , get_error_list/1
@@ -35,10 +36,16 @@
         , set_allowed_errors/2
         , set_current_schema/2
         , set_error_list/2
+        , find_schema/2
         ]).
 
 -export_type([ state/0
              ]).
+
+%% Includes
+-include("jesse_schema_validator.hrl").
+
+-define(schema_loader_fun, fun jesse_database:read/1).
 
 %% Internal datastructures
 -record( state
@@ -49,13 +56,11 @@
          , error_list         :: list()
          , error_handler      :: fun((#state{}) -> list() | no_return())
          , default_schema_ver :: atom()
+         , schema_loader_fun  :: fun((binary()) -> {ok, jesse:json_term()} | jesse:json_term() | ?not_found)
          }
        ).
 
 -opaque state() :: #state{}.
-
-%% Includes
--include("jesse_schema_validator.hrl").
 
 %%% API
 %% @doc Adds `Property' to the `current_path' in `State'.
@@ -78,6 +83,11 @@ get_current_path(#state{current_path = CurrentPath}) ->
 -spec get_current_schema(State :: state()) -> jesse:json_term().
 get_current_schema(#state{current_schema = CurrentSchema}) ->
   CurrentSchema.
+
+%% @doc Getter for `original_schema'.
+-spec get_original_schema(State :: state()) -> jesse:json_term().
+get_original_schema(#state{original_schema = OriginalSchema}) ->
+  OriginalSchema.
 
 %% @doc Getter for `default_schema_ver'.
 -spec get_default_schema_ver(State :: state()) -> binary().
@@ -113,6 +123,10 @@ new(JsonSchema, Options) ->
                                         , Options
                                         , ?default_schema_ver
                                         ),
+  LoaderFun = proplists:get_value( schema_loader_fun
+                                 , Options
+                                 , ?schema_loader_fun
+                                 ),
   #state{ current_schema     = JsonSchema
         , current_path       = []
         , original_schema    = JsonSchema
@@ -120,6 +134,7 @@ new(JsonSchema, Options) ->
         , error_list         = []
         , error_handler      = ErrorHandler
         , default_schema_ver = DefaultSchemaVer
+        , schema_loader_fun  = LoaderFun
         }.
 
 %% @doc Removes the last element from `current_path' in `State'.
@@ -145,6 +160,20 @@ set_current_schema(State, NewSchema) ->
 -spec set_error_list(State :: state(), ErrorList :: list()) -> state().
 set_error_list(State, ErrorList) ->
   State#state{error_list = ErrorList}.
+
+%% @doc Find a schema based on URI
+-spec find_schema(State :: state(), SchemaURI :: binary()) -> jesse:json_term() | ?not_found.
+find_schema(#state{schema_loader_fun=LoaderFun}, SchemaURI) ->
+  try LoaderFun(SchemaURI) of
+      {ok, Schema} -> Schema;
+      Schema ->
+        case jesse_lib:is_json_object(Schema) of
+          true -> Schema;
+          false -> ?not_found
+        end
+  catch
+    _:_ -> ?not_found
+  end.
 
 %%% Local Variables:
 %%% erlang-indent-level: 2
