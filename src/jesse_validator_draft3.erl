@@ -373,7 +373,7 @@ check_pattern_properties(Value, PatternProperties, State) ->
 
 %% @private
 check_match({PropertyName, PropertyValue}, {Pattern, Schema}, State) ->
-  case re:run(PropertyName, Pattern, [{capture, none}]) of
+  case re:run(PropertyName, Pattern, [{capture, none}, unicode]) of
     match   ->
       check_value( PropertyName
                  , PropertyValue
@@ -742,7 +742,7 @@ check_unique_items(Value, true, State) ->
 %% specification from ECMA 262/Perl 5
 %% @private
 check_pattern(Value, Pattern, State) ->
-  case re:run(Value, Pattern, [{capture, none}]) of
+  case re:run(Value, Pattern, [{capture, none}, unicode]) of
     match   -> State;
     nomatch ->
       handle_data_invalid(?no_match, Value, State)
